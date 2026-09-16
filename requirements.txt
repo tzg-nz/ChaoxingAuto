@@ -1,0 +1,7 @@
+requests
+pycryptodome
+beautifulsoup4
+numpy
+fonttools
+pillow
+ddddocr
