@@ -224,7 +224,16 @@ class ChaoXing:
         }
         meta_response = self.session.get(url, params=params)
         soup = BeautifulSoup(meta_response.content, 'html.parser')
-        course_list_meta_url = soup.select_one('[name="课程"]').get('dataurl')
+        course_tab = soup.select_one('[name="课程"]')
+        if course_tab is None:
+            # /base 页没有「课程」导航：登录态不完整被重定向，或账号页面结构特殊；
+            # 打印页面线索后退出，避免裸 AttributeError 且避免后续用错误参数继续请求
+            title = soup.title.get_text(strip=True) if soup.title else '(无标题)'
+            print('❌ 课程入口获取失败（页面标题: %s）' % title)
+            print('   请先用浏览器登录 i.chaoxing.com，确认左侧有「课程」栏目且能进入；'
+                  '仍不行则重新运行本命令重试（多为会话未建立完整）')
+            raise SystemExit(1)
+        course_list_meta_url = course_tab.get('dataurl')
         response = self.session.get(course_list_meta_url, headers=course_list_meta_headers)
         return response
 
