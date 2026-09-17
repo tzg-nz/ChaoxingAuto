@@ -268,8 +268,7 @@ class ChaoXing:
             course_infos = item.select_one('div .course-info .inlineBlock a')
             if course_infos is None:
                 # 未开课等特殊状态卡片没有可点入的 a 链接（页面渲染「本课程未开课」标签）：
-                # 打印节点文本提示后跳过，防整页解析炸掉
-                print('   ⚠ 跳过不可用课程卡片: %s' % item.get_text(' ', strip=True)[:60])
+                # 静默跳过，不占 index 也不输出提示
                 continue
             course_url = course_infos.get('href')
             title = course_infos.select_one('span').get_text()
