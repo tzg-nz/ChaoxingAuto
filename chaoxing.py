@@ -224,14 +224,16 @@ class ChaoXing:
         }
         meta_response = self.session.get(url, params=params)
         soup = BeautifulSoup(meta_response.content, 'html.parser')
-        course_tab = soup.select_one('[name="课程"]')
+        # 不同单位部署的导航名不同：常见「课程」，教务对接版叫「教务课程」；按 name 属性定位不依赖顺序
+        course_tab = soup.select_one('[name="课程"], [name="教务课程"]')
         if course_tab is None:
-            # /base 页没有「课程」导航：登录态不完整被重定向，或账号页面结构特殊；
-            # 打印页面线索后退出，避免裸 AttributeError 且避免后续用错误参数继续请求
+            # 仍找不到：列出页面全部带 dataurl 的导航栏目名，便于确认该账号页面的命名并适配
+            nav_names = [el.get('name') for el in soup.select('[dataurl]') if el.get('name')]
             title = soup.title.get_text(strip=True) if soup.title else '(无标题)'
             print('❌ 课程入口获取失败（页面标题: %s）' % title)
-            print('   请先用浏览器登录 i.chaoxing.com，确认左侧有「课程」栏目且能进入；'
-                  '仍不行则重新运行本命令重试（多为会话未建立完整）')
+            print('   页面导航栏目: %s' % ('、'.join(nav_names) or '(未解析到任何栏目)'))
+            print('   请把上面一行反馈给作者以适配该命名；'
+                  '或浏览器登录 i.chaoxing.com 确认课程所在栏目')
             raise SystemExit(1)
         course_list_meta_url = course_tab.get('dataurl')
         response = self.session.get(course_list_meta_url, headers=course_list_meta_headers)
