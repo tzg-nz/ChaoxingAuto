@@ -266,9 +266,15 @@ class ChaoXing:
         course_list_origin = soup.select('#stuNormalCourseListDiv > div')
         for item in course_list_origin:
             course_infos = item.select_one('div .course-info .inlineBlock a')
+            if course_infos is None:
+                # 列表里的非课程卡片节点（分页/空态提示/账号页面结构差异）：跳过防整页解析炸掉
+                continue
             course_url = course_infos.get('href')
             title = course_infos.select_one('span').get_text()
             self.course_list.append((title, course_url))
+        if not self.course_list:
+            print('❌ 未解析到任何课程：账号可能没有课程，或课程页结构有变；'
+                  '请用浏览器登录 i.chaoxing.com 确认有课程后重试')
 
     # 5、单个课程首页获取源数据
     def __get_course_meta(self, index):
