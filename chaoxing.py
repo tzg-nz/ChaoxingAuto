@@ -1934,7 +1934,8 @@ class ChaoXing:
         tail = '已完成' if cnt == 0 else '差 %d 个任务点' % cnt
         return '%s %s%s（%s）' % ('✅' if cnt == 0 else '❌', head, name, tail)
 
-    # 26、查课程完成进度：show_detail=False 只列章节列表；True 带任务点状态和总进度。
+    # 26、查课程完成进度：show_detail=False 只列章节名列表（快速看结构）；
+    # True 带任务点状态、总进度条和考试列表（main 固定此详细输出）。
     # 全部数据来自章节树（studentcourse 页一次请求全有，零逐章请求）：
     # 无待完成→✅，待完成→❌，括号里统一「差 N 个任务点」且各列上下对齐；
     # 总进度条用页面头部「已完成任务点: x/y」
@@ -1945,8 +1946,13 @@ class ChaoXing:
         user.get_course_list()
         response = user.get_course(index - 1)
         user.get_capter_list(response)
-        # 章节行/进度条/考试列表统一全量输出（快速模式已废弃，show_detail 仅保留兼容旧调用）
+        print('🚀 当前课程：%s' % user.course_name)
         print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
+        if not show_detail:
+            # 简版：只有序号+章节名，不出任务点状态/进度条/考试列表
+            for num, (_, name) in enumerate(user.capter_list, 1):
+                print('%d. %s' % (num, name))
+            return
         for task_id, name in user.capter_list:
             print(user.__chapter_line(task_id, name,
                                       user.chapter_status.get(str(task_id), 0)))
@@ -2162,6 +2168,7 @@ class ChaoXing:
 
         # 实时任务点计数以章节树基线初始化，任务点完成时在 finish_* 内部+1并即时输出进度条
         user.pts_done, user.pts_all = user.course_pts or (0, 0)
+        print('🚀 当前课程：%s' % user.course_name)
         print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
         targets = []
         for task_id, name in user.capter_list:
@@ -2245,4 +2252,4 @@ if __name__ == '__main__':
     elif len(sys.argv) == 4:
         ChaoXing.main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
     else:
-        pass
+        ChaoXing.progress('13355841719', 'HJX20071203', 2)
