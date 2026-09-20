@@ -1949,9 +1949,9 @@ class ChaoXing:
         print('🚀 当前课程：%s' % user.course_name)
         print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
         if not show_detail:
-            # 简版：只有序号+章节名，不出任务点状态/进度条/考试列表
-            for num, (_, name) in enumerate(user.capter_list, 1):
-                print('%d. %s' % (num, name))
+            # 简版：只有章节名，不带序号/任务点状态/进度条/考试列表
+            for _, name in user.capter_list:
+                print(name)
             return
         for task_id, name in user.capter_list:
             print(user.__chapter_line(task_id, name,
@@ -2252,4 +2252,4 @@ if __name__ == '__main__':
     elif len(sys.argv) == 4:
         ChaoXing.main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
     else:
-        ChaoXing.progress('13355841719', 'HJX20071203', 2)
+        ChaoXing.progress('13355841719', 'HJX20071203', 2, show_detail=True)
