@@ -438,7 +438,7 @@ class ChaoXing:
             except requests.exceptions.RequestException as e:
                 if attempt == 2:
                     raise
-                print('⚠ 网络异常 %s（第 %d/3 次），%d秒后重发' % (
+                print('⚠️ 网络异常 %s（第 %d/3 次），%d秒后重发' % (
                     type(e).__name__, attempt + 1, 2 * (attempt + 1)))
                 time.sleep(2 * (attempt + 1))
 
@@ -619,7 +619,7 @@ class ChaoXing:
             })
         except requests.exceptions.RequestException as e:
             # 重发仍断连：丢这一拍不致命，进度按时钟累积，60s 后下一拍把完整进度补上
-            print('   ⚠ 心跳上报网络异常: %s' % type(e).__name__)
+            print('   ⚠️ 心跳上报网络异常: %s' % type(e).__name__)
             return {}
         if response.status_code != 200:
             print('心跳上报异常:', response.status_code)
@@ -935,7 +935,7 @@ class ChaoXing:
             conflict = {k: (table[k], v) for k, v in fm.items() if k in table and table[k] != v}
             new_keys = {k: v for k, v in fm.items() if k not in table}
             if conflict:
-                print('🔤 ⚠ 字体 %s 有 %d 处映射与全局表不同:' % (fmd5, len(conflict)))
+                print('🔤 ⚠️ 字体 %s 有 %d 处映射与全局表不同:' % (fmd5, len(conflict)))
                 for k, (old, new) in conflict.items():
                     print('   %s: 表里=%s 字体=%s' % (k, old, new))
                 print('   请人工核对后把正确映射加入脚本顶部 CXSECRET_MAP 兜底')
@@ -953,7 +953,7 @@ class ChaoXing:
 
         conflict = [k for k, v in self.CXSECRET_MAP.items() if k in table and table[k] != v]
         if conflict:
-            print('🔤 ⚠ 自动结果与人工核对冲突: %s，以人工核对为准' % conflict)
+            print('🔤 ⚠️ 自动结果与人工核对冲突: %s，以人工核对为准' % conflict)
         mapping = dict(table)
         mapping.update(self.CXSECRET_MAP)
         return mapping
@@ -1050,7 +1050,7 @@ class ChaoXing:
         if not options:
             # 客观题但选项全空（题面结构异常）：无选项可组提示词，本题留空返回；
             # 测验/考试共用入口，必须防御（letters 空集曾炸 [%s] 正则）
-            print('   ⚠ 选项未识别出有效 data，本题留空')
+            print('   ⚠️ 选项未识别出有效 data，本题留空')
             return [], ''
         is_judge = any(d in ('true', 'false') for d, _ in options)
         lines = [stem]
@@ -1083,11 +1083,11 @@ class ChaoXing:
                 r = requests.post(self.LLM_API_URL, json=payload, headers=headers, timeout=120)
             except requests.RequestException as e:
                 r = None
-                print('   ⚠ 模型请求异常 %s（第 %d/3 次）' % (type(e).__name__, attempt + 1))
+                print('   ⚠️ 模型请求异常 %s（第 %d/3 次）' % (type(e).__name__, attempt + 1))
             else:
                 if r.status_code == 200:
                     break
-                print('   ⚠ 模型 HTTP %s（第 %d/3 次）' % (r.status_code, attempt + 1))
+                print('   ⚠️ 模型 HTTP %s（第 %d/3 次）' % (r.status_code, attempt + 1))
                 r = None
             if attempt < 2:
                 time.sleep(3 * (attempt + 1))
@@ -1301,7 +1301,7 @@ class ChaoXing:
                 # 默认不追求满分：提交一次即收工
                 submitted_ok = True
                 break
-            print('⚠ 本轮客观题有 %d 题答错，%s' % (
+            print('⚠️ 本轮客观题有 %d 题答错，%s' % (
                 sum(1 for q in questions if q['qtype'] != '4' and not result.get(q['qid'])),
                 '继续下一轮' if rnd < self.QUIZ_MAX_ROUNDS else '已达最大重试次数'))
             if rnd < self.QUIZ_MAX_ROUNDS and fetch_page is not None:
@@ -1429,7 +1429,7 @@ class ChaoXing:
             if not m:
                 m = re.search(r'value="([^"]*)"[^>]*?(?:id|name)="%s"' % fid, html)
             if not m:
-                print('📝 ⚠ 重做失败：页面缺少字段 %s' % fid)
+                print('📝 ⚠️ 重做失败：页面缺少字段 %s' % fid)
                 return None
             fields[fid] = m.group(1)
         r = self.__risky_req('GET', 'https://mooc1.chaoxing.com/work/retest',
@@ -1441,7 +1441,7 @@ class ChaoXing:
         if data.get('url'):
             print('📝 🔁 已重置为可重做状态')
             return urljoin('https://mooc1.chaoxing.com/', data['url'])
-        print('📝 ⚠ 重做失败：%s' % (data.get('msg') or r.text[:100]))
+        print('📝 ⚠️ 重做失败：%s' % (data.get('msg') or r.text[:100]))
         return None
 
     # 25.5、最终报告：全部做对不输出（__do_quiz 已打 🎉）；错题详情只写文件不刷控制台，
@@ -1800,11 +1800,11 @@ class ChaoXing:
             page = sess.pop('first_page')
             if int(page.get('remainTime') or 0) < 60:
                 if attempt < self.MAX_RETAKE:
-                    print('⚠ 限时已耗尽（剩 %s 秒），自动重考（第 %d/%d 次）' % (
+                    print('⚠️ 限时已耗尽（剩 %s 秒），自动重考（第 %d/%d 次）' % (
                         page.get('remainTime'), attempt + 1, self.MAX_RETAKE))
                     time.sleep(1)
                     continue
-                print('⚠ 限时耗尽，%d 次重考机会也已用完，本场放弃' % self.MAX_RETAKE)
+                print('⚠️ 限时耗尽，%d 次重考机会也已用完，本场放弃' % self.MAX_RETAKE)
                 return False
             self.__do_exam(sess, page)
             if getattr(self, 'no_submit', False):
@@ -1847,7 +1847,7 @@ class ChaoXing:
                     resp = self.__save_exam_question(sess, page, answer, temp_save=True)
                 except requests.RequestException as e:
                     resp = None
-                    print('   ⚠ 保存请求异常 %s（第 %d/3 次）' % (type(e).__name__, retry + 1))
+                    print('   ⚠️ 保存请求异常 %s（第 %d/3 次）' % (type(e).__name__, retry + 1))
                 if resp is not None and resp.get('status') == 'success':
                     break
                 msg = str((resp or {}).get('msg', ''))
@@ -1866,7 +1866,7 @@ class ChaoXing:
             time.sleep(0.8)  # 节流：翻题请求贴着保存发容易触发风控
             page = self.__fetch_exam_question(sess, idx)
             if page is None:
-                print('⚠ 第 %d 题拉取失败，停止翻题' % (idx + 1))
+                print('⚠️ 第 %d 题拉取失败，停止翻题' % (idx + 1))
                 break
         print('✍️ 作答完成：%d 题（共 %s 题）' % (idx, total or '?'))
         if completed or not total:
@@ -1876,9 +1876,9 @@ class ChaoXing:
             elif last_resp is not None:
                 self.__submit_exam(sess, page, idx)
             else:
-                print('⚠ 一题都没保存成功，跳过交卷')
+                print('⚠️ 一题都没保存成功，跳过交卷')
         elif last_resp is not None:
-            print('⚠ 中途断链未交卷：已保存的答案仍在，重新运行可从当前进度续作')
+            print('⚠️ 中途断链未交卷：已保存的答案仍在，重新运行可从当前进度续作')
         return True
 
     # 27.6.1、交卷：对当前题再发一次 tempSave=false 即服务端交卷；交卷不可逆。
@@ -2228,7 +2228,7 @@ class ChaoXing:
                         # 不计完成，权威值会小于本地实时计数，直接采纳会让进度条倒退
                         user.pts_done = max(user.pts_done, srv_done)
             except Exception as e:
-                print('   ⚠ 进度刷新失败: %s: %s' % (type(e).__name__, e))
+                print('   ⚠️ 进度刷新失败: %s: %s' % (type(e).__name__, e))
             if (user.pts_done, user.pts_all) != pts_before:
                 # 权威值与本地实时计数有偏差（如服务端异步补录）才补一条进度条，一致则不重复输出
                 print(user.__progress_bar(user.pts_done, user.pts_all))
