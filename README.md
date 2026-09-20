@@ -105,7 +105,7 @@ ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 **progress() / courses()**
 
 - `courses(username, password)`：列出账号下全部课程，行首序号即 `main()` 的 index；同时返回 `[(序号, 课程名), ...]` 供代码内使用
-- `progress(username, password, index)`：默认只列章节名列表（快速看课程结构）；传 `show_detail=True` 输出章节完成状态、任务点总进度和考试列表（`main()` 开头固定用这种详细输出）
+- `progress(username, password, index)`：默认只列章节名列表（快速看课程结构）；传 `show_detail=True` 输出章节完成状态、任务点总进度和考试列表（`main()` 开头固定用这种详细输出），像[xxxxxx]这个里面是关于章节/考试id可传参给main用于单独刷
 
 ## 答题策略
 
