@@ -71,7 +71,8 @@ python chaoxing.py <用户名> <密码> ls
 from chaoxing import ChaoXing
 
 ChaoXing.courses('账号', '密码')                        # 列出全部课程
-ChaoXing.progress('账号', '密码', 1)                    # 查看章节/任务点/考试进度
+ChaoXing.progress('账号', '密码', 1)                    # 列出章节名列表（快速看结构）
+ChaoXing.progress('账号', '密码', 1, True)              # 带任务点进度、考试列表的详细版
 ChaoXing.main('账号', '密码', 1)                        # 全流程刷课
 ChaoXing.main('账号', '密码', 1, mode='course')         # 只刷课程内容，不碰考试
 ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
@@ -104,7 +105,7 @@ ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 **progress() / courses()**
 
 - `courses(username, password)`：列出账号下全部课程，行首序号即 `main()` 的 index；同时返回 `[(序号, 课程名), ...]` 供代码内使用
-- `progress(username, password, index)`：查看该课程的章节完成状态、任务点总进度和考试列表
+- `progress(username, password, index)`：默认只列章节名列表（快速看课程结构）；传 `show_detail=True` 输出章节完成状态、任务点总进度和考试列表（`main()` 开头固定用这种详细输出）
 
 ## 答题策略
 
