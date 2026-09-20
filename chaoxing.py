@@ -2252,4 +2252,4 @@ if __name__ == '__main__':
     elif len(sys.argv) == 4:
         ChaoXing.main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
     else:
-        ChaoXing.progress('13355841719', 'HJX20071203', 2, show_detail=True)
+        pass
