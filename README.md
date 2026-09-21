@@ -11,10 +11,12 @@
 
 **如果有帮助麻烦给个star🙏**
 
-**常见问题：**    courseType = soup.select_one('#myLearn').get('coursetype')
+**常见问题：** 
+1. courseType = soup.select_one('#myLearn').get('coursetype')
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'NoneType' object has no attribute 'get'
 如果出现类似报错大概率是因为你超星的左边侧边栏写的不是课程或者结构不太一样正常是长这样，因为我自己账号是这样的所以出现这个错误暂时没办法解决，要么你就把问题丢给ai让他来修改，要么可以的话加我好友我远程来修改问题
+2. 如果出现验证码相关的报错那么不用管，重新运行即可，如果一直报错失败好几次，那么可能网站政策修改，可以使用ai自己修改或者加我好友询问即可
 ![超星侧边栏](img/4.jpg)
 
 如若遇到问题或者代码逻辑错误，可以加好友询问
