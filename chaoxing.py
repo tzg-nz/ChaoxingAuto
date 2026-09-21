@@ -14,6 +14,15 @@ from urllib.parse import parse_qsl, quote, urljoin, urlparse
 # print 立即刷新：管道/沙箱下 stdout 默认块缓冲会攒着一次性输出，重定义后任何环境都逐行实时
 print = partial(print, flush=True)
 
+# Windows 下输出被重定向/被别的程序管道接走时，Python 会退回 GBK(cp936) 编码，
+# 打印 ✅👤 这类符号直接 UnicodeEncodeError 崩掉。固定 UTF-8 并允许替换：
+# 真接控制台时 Python 走 WriteConsoleW，不受此处影响
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError, OSError):
+        pass
+
 # 脚本所在目录：fonts/cxsecret_map.json 都相对它定位，
 # 这样无论从哪个工作目录（命令行/PyCharm 运行配置）启动都不会找不到文件
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -254,14 +263,24 @@ class ChaoXing:
         }
         meta_response = self.__get_course_list_meta()
         soup = BeautifulSoup(meta_response.content, 'html.parser')
-        courseType = soup.select_one('#myLearn').get('coursetype')
-        courseFolderId = soup.select_one('#courseFolderId').get('value')
-        query = soup.select_one('#searchInput').get('value', '')
-        pageHeader = soup.select_one('#tchPageHeader').get('value')
-        single = soup.select_one('#single').get('value')
-        superstarClass = soup.select_one('#superstarClass').get('value')
-        isFirefly = soup.select_one('#isFirefly').get('value')
-        fid = soup.select_one('#filterFid').get('value', '')
+        # 课程页有两种服务端渲染：mooc2-ans（有 #myLearn 这套隐藏域）和
+        # mooc1-2「学生端」（没有这些元素）。缺元素时按下面的默认值提交同样
+        # 能拿到全部课程（实测），逐个兜底，不再 .get 直接崩
+        def meta_val(selector, attr, default=None):
+            el = soup.select_one(selector)
+            if el is None:
+                return default
+            value = el.get(attr, default)
+            return default if value in (None, '') else value
+
+        courseType = meta_val('#myLearn', 'coursetype', '1')
+        courseFolderId = meta_val('#courseFolderId', 'value', '0')
+        query = meta_val('#searchInput', 'value', '')
+        pageHeader = meta_val('#tchPageHeader', 'value', '')
+        single = meta_val('#single', 'value', '0')
+        superstarClass = meta_val('#superstarClass', 'value', '0')
+        isFirefly = meta_val('#isFirefly', 'value', '0')
+        fid = meta_val('#filterFid', 'value', '')
         data = {
             'courseType': courseType,
             'courseFolderId': courseFolderId,
@@ -272,9 +291,11 @@ class ChaoXing:
             'isFirefly': isFirefly,
             'fid': fid,
         }
+        # Referer 随实际课程页走：写死的那条属于别的单位/会话，换成本次真实页面更稳
+        course_list_headers['Referer'] = meta_response.url
         response = self.session.post(course_list_url, headers=course_list_headers, data=data)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        course_list_origin = soup.select('#stuNormalCourseListDiv > div')
+        post_soup = BeautifulSoup(response.content, 'html.parser')
+        course_list_origin = post_soup.select('#stuNormalCourseListDiv > div')
         for item in course_list_origin:
             course_infos = item.select_one('div .course-info .inlineBlock a')
             if course_infos is None:
@@ -285,8 +306,53 @@ class ChaoXing:
             title = course_infos.select_one('span').get_text()
             self.course_list.append((title, course_url))
         if not self.course_list:
+            # 兜底：新版单位课程页既没有隐藏域也没有 #stuNormalCourseListDiv，
+            # POST 只能拿到空壳；改为直接在返回 HTML 里抓课程卡片入口链接
+            for page in (post_soup, BeautifulSoup(meta_response.content, 'html.parser')):
+                self.course_list = self.__collect_course_links(page)
+                if self.course_list:
+                    break
+        if not self.course_list:
+            self.__dump_course_page_debug(meta_response, response)
             print('❌ 未解析到任何课程：账号可能没有课程，或课程页结构有变；'
                   '请用浏览器登录 i.chaoxing.com 确认有课程后重试')
+
+    # 4.1、兜底解析课程卡片：只认同时带 courseid 与 clazzid 的链接——章节/任务点
+    # 链接也带 courseid 但没有 clazzid，既不会漏课程也不会把章节当课程；
+    # 同一门课被外层和内层卡片各命中一次时只留一条，且留标题更完整的那个
+    @staticmethod
+    def __collect_course_links(soup):
+        found = {}
+        for a in soup.select('a[href]'):
+            href = (a.get('href') or '').strip()
+            courseid = re.search(r'[?&]courseid=([^&]*)', href, re.I)
+            clazzid = re.search(r'[?&]clazzid=([^&]*)', href, re.I)
+            if not courseid or not clazzid:
+                continue
+            if href.startswith('//'):
+                href = 'https:' + href
+            title = re.sub(r'\s+', ' ', a.get_text(' ', strip=True)).strip()
+            if not title:
+                continue
+            key = (courseid.group(1).lower(), clazzid.group(1).lower())
+            if len(title) > len(found.get(key, ('', ''))[0]):
+                found[key] = (title, href)
+        return list(found.values())
+
+    # 4.2、课程列表彻底解析失败时把课程页 HTML 落到脚本目录，便于反馈页面结构适配
+    @staticmethod
+    def __dump_course_page_debug(meta_response, post_response=None):
+        pages = [('meta', meta_response)]
+        if post_response is not None:
+            pages.append(('post', post_response))
+        for tag, resp in pages:
+            path = os.path.join(BASE_DIR, '课程页调试_%s.html' % tag)
+            try:
+                with open(path, 'wb') as f:
+                    f.write(resp.content)
+                print('   （已保存课程页 HTML：%s，可发给作者适配）' % path)
+            except OSError:
+                pass
 
     # 5、单个课程首页获取源数据
     def __get_course_meta(self, index):
@@ -319,18 +385,47 @@ class ChaoXing:
         }
         meta_response = self.__get_course_meta(index)
         soup = BeautifulSoup(meta_response.content, 'html.parser')
-        if soup.select_one('#courseid') is None:
-            raise RuntimeError('课程页被 9010 风控拦截（自动过码未成功），稍后重试')
-        self.courseid = soup.select_one('#courseid').get('value')
-        self.clazzid = soup.select_one('#clazzid').get('value')
-        self.cpi = soup.select_one('#cpi').get('value')
-        ut = soup.select_one('#heardUt').get('value')
-        t = soup.select_one('#t').get('value')
-        enc = soup.select_one('#enc').get('value')
-        self.enc = soup.select_one('#oldenc').get('value')
-        self.openc = soup.select_one('#openc').get('value')
-        ee = soup.select_one('#examEnc')
-        self.exam_enc = ee.get('value') if ee is not None else ''
+        # 课程入口页有两代形态，两种都要吃得下：
+        #   a) 旧 mooc2-ans 服务端渲染页：courseid/clazzid/cpi/enc… 都在隐藏域里；
+        #   b) 新 mooc2-ans-vue 单页应用：返回几 KB 的 JS 壳、一个隐藏域都没有，
+        #      但重定向后的最终 URL query 里 courseId/clazzId/cpi/enc/ut/t 一个不少。
+        # 以前只认 a)，碰到 b) 会误判成「被 9010 风控拦截」——其实是页面改版，重试没用
+        def hidden(*names):
+            for el in soup.find_all('input'):
+                if (el.get('id') or '').lower() in names:
+                    value = el.get('value')
+                    if value not in (None, ''):
+                        return value
+            return None
+
+        # 原始地址和跳转后的最终地址都收进 query，谁有值用谁的
+        url_query = {}
+        for u in (getattr(meta_response.request, 'url', '') or '', meta_response.url):
+            for key, value in parse_qsl(urlparse(u).query):
+                if value:
+                    url_query.setdefault(key, value)
+
+        def pick(hidden_names, query_names, default=None):
+            return (hidden(*hidden_names)
+                    or next((url_query[k] for k in query_names if url_query.get(k)), None)
+                    or default)
+
+        legacy_page = hidden('courseid') is not None  # 旧版隐藏域形态标记（控制章节页覆盖）
+        self.courseid = pick(('courseid',), ('courseid', 'courseId'))
+        self.clazzid = pick(('clazzid',), ('clazzid', 'clazzId'))
+        self.cpi = pick(('cpi',), ('cpi',), '')
+        ut = pick(('heardut',), ('ut',), 's')
+        t = pick(('t',), ('t',), str(int(time.time() * 1000)))
+        enc = pick(('enc',), ('enc',), '')
+        self.enc = pick(('oldenc',), ('enc',), enc)
+        self.openc = hidden('openc') or ''
+        self.exam_enc = hidden('examenc') or ''
+        if not (self.courseid and self.clazzid):
+            self.__dump_course_page_debug(meta_response)
+            raise RuntimeError('课程入口页解析失败：既没有 courseid/clazzid 隐藏域，'
+                               'URL 里也没有这两个参数（HTTP %s，最终地址 %s）。'
+                               '可能是风控未过，也可能是课程页又改版了'
+                               % (meta_response.status_code, meta_response.url))
         params = {
             'courseid': self.courseid,
             'clazzid': self.clazzid,
@@ -341,6 +436,28 @@ class ChaoXing:
         }
         self._stu_params = params  # 留给 refresh_chapter_status 重拉章节树用
         response = self.__risky_req('GET', course_url, params=params, headers=course_headers)
+        stu_soup = BeautifulSoup(response.content, 'html.parser')
+        # 章节页自己也带一套隐藏域（新版 id 是 courseId/clazzId/enc 驼峰）：
+        # 仅当入口页是新版形态时以章节页同源值为准（旧版行为保持完全不变）
+        if not legacy_page:
+            for el in stu_soup.find_all('input'):
+                eid = (el.get('id') or '').lower()
+                value = el.get('value')
+                if not value:
+                    continue
+                if eid == 'courseid':
+                    self.courseid = value
+                elif eid == 'clazzid':
+                    self.clazzid = value
+                elif eid == 'enc':
+                    self.enc = value
+        if not stu_soup.select('div.chapter_item[id^=cur]'):
+            # 空课程（页面渲染「暂无章节内容」）是正常情况，其余才是真异常
+            if stu_soup.select_one('.nodata') is not None or '暂无章节内容' in stu_soup.get_text():
+                print('ℹ️ 该课程暂无章节内容（无需刷课）')
+            else:
+                print('⚠️ 章节页没解析到章节树（HTTP %s，%d 字节）：可能是风控或未适配的页面改版'
+                      % (response.status_code, len(response.content)))
         return response
 
     def get_capter_list(self, response):
