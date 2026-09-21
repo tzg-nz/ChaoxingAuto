@@ -11,6 +11,11 @@
 
 **如果有帮助麻烦给个star🙏**
 
+**常见问题：**    courseType = soup.select_one('#myLearn').get('coursetype')
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'get'
+如果出现类似报错大概率是因为你超星的左边侧边栏写的不是课程或者结构不太一样
+
 如若遇到问题或者代码逻辑错误，可以加好友询问
 ![微信二维码](img/3.jpg)
 
