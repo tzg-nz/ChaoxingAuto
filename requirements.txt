@@ -4,4 +4,4 @@ beautifulsoup4
 numpy
 fonttools
 pillow
-ddddocr
+opencv-python

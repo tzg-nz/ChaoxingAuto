@@ -35,6 +35,9 @@ from bs4 import BeautifulSoup
 from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFont
 
+# 滑块缺口识别（本目录独立模块，算法抠自 utils/SliderCaptchaOcr，不再依赖那个项目）
+import slider_gap
+
 
 class ChaoXing:
     # 视频播放器页面地址，心跳上报需要带上这个 Referer
@@ -70,8 +73,6 @@ class ChaoXing:
     EXAM_CAPTCHA_VERSION = '1.1.22'
     # 考试满分线：已完成但最终成绩低于此分的自动重考刷分（取最高成绩规则，重考不亏）
     EXAM_FULL_SCORE = 100.0
-    # 考试滑块缺口识别引擎（utils/SliderCaptchaOcr，进程内懒加载复用）
-    __gap_detector = None
 
     def __init__(self, username, password):
         self.username = username
@@ -1588,23 +1589,12 @@ class ChaoXing:
 
     # ---------- 考试（exam-ans）----------
 
-    # 27.0、滑块缺口识别引擎：utils/SliderCaptchaOcr/detector 进程内懒加载
-    @classmethod
-    def __get_gap_detector(cls):
-        if cls.__gap_detector is None:
-            det_dir = os.path.normpath(os.path.join(BASE_DIR, '..', '..', 'utils', 'SliderCaptchaOcr'))
-            if det_dir not in sys.path:
-                sys.path.insert(0, det_dir)
-            import detector
-            cls.__gap_detector = detector
-        return cls.__gap_detector
-
-    # 27.0.1、识别真缺口左缘 x（big 图坐标系）：
+    # 27.0、识别真缺口左缘 x（big 图坐标系）：
     # 页面渲染时在拼图当前位置画黄色高亮轮廓（假目标），真缺口是另一个暗洞：
     # 检出黄色簇时选与它距离>30px 且 conf 最高的 gap；无黄色且多 gap 时选 x 最大（实验样本验证）
     @staticmethod
     def __exam_gap_x(big_bytes, small_bytes):
-        info = ChaoXing.__get_gap_detector().find_gap_info(big_bytes, small_bytes)
+        info = slider_gap.find_gap_info(big_bytes, small_bytes)
         gaps = (info or {}).get('gaps') or []
         gaps = [g for g in gaps if g.get('x') is not None]
         if not gaps:
