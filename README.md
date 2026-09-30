@@ -3,7 +3,7 @@
 **如果不会改代码那么看下面的操作流程和解释即可**
 
 **操作流程**：下载代码后，进入下载的文件夹内，然后右键在终端打开（总之终端路径在这个文件夹内即可），然后运行命令（在此之前需配置了python环境）
-1. pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow ddddocr
+1. pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow opencv-python
 2. python chaoxing.py 账号名 密码 ls
 3. python chaoxing.py 账号名 密码 第几个课程
 
@@ -53,7 +53,7 @@ AttributeError: 'NoneType' object has no attribute 'get'
 ## 环境准备
 
 ```text
-pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow ddddocr
+pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow opencv-python
 ```
 
 - 字形比对基准字体（思源黑体 CN Normal）：不随仓库分发，首次运行时自动从 jsdelivr 下载
