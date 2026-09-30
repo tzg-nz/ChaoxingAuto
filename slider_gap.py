@@ -3,7 +3,7 @@
 
 只保留识别核心：多路算法投票 + 证据族去重 + 独一份门控，识别逻辑与原版
 detector.py 完全一致。未搬入的部分：样本落盘、画框标注、Web 对照页、
-轨迹位姿辅助（sx/sy/tdist）；ddddocr 兜底在现版算法里已无调用点，同样未搬。
+轨迹位姿辅助（sx/sy/tdist）；ddddocr 兜底是冗余死代码，已随上游清理一并移除。
 
 识别器：
   shadow   反色亮度 × 滑块 alpha（暗洞最亮）
@@ -704,8 +704,6 @@ def _n_lock(xs, x, y, tol=6, ytol=8):
         return 0
     n = 0
     for m, xx, yy, c in xs:
-        if 'dddd' in str(m):
-            continue
         if c is None or float(c) < 0.25:
             continue
         if abs(int(xx) - int(x)) <= tol and abs(int(yy) - int(y)) <= ytol:
@@ -715,8 +713,7 @@ def _n_lock(xs, x, y, tol=6, ytol=8):
 
 def _agree(xs, tol=6, ytol=8):
     """xs: (method, x, y, conf)。x、y 都接近才算一票。暗区不投票。"""
-    pool = [(m, x, y, c) for m, x, y, c in xs
-            if 'dddd' not in str(m) and str(m) != 'dark']
+    pool = [(m, x, y, c) for m, x, y, c in xs if str(m) != 'dark']
     if len(pool) < 2:
         return None
     for _m, xa, ya, _c in pool:
@@ -758,8 +755,7 @@ def _pick_best(xs):
     """
     if not xs:
         return None
-    pool = [v for v in xs
-            if str(v[0]) != 'dark' and 'dddd' not in str(v[0])]
+    pool = [v for v in xs if str(v[0]) != 'dark']
     if not pool:
         pool = list(xs)
 
@@ -814,7 +810,7 @@ def _match_piece(bg, piece, bg_bytes=None, full=None, y_lo=None, y_hi=None):
         hit['cands'] = cands
         hit['w'] = int(piece.shape[1])
         hit['h'] = int(piece.shape[0])
-        shown = [t for t in xs if str(t[0]) not in ('dark',) and 'dddd' not in str(t[0])]
+        shown = [t for t in xs if str(t[0]) != 'dark']
         hit['conf'] = _lock_conf(hit.get('conf'), _n_lock(shown, hit.get('x'), hit.get('y')))
         return hit
     return {'x': None, 'y': None, 'method': None, 'conf': 0.0,
