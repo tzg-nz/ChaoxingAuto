@@ -5,3 +5,4 @@ numpy
 fonttools
 pillow
 opencv-python
+ddddocr
