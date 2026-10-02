@@ -46,8 +46,8 @@ AttributeError: 'NoneType' object has no attribute 'get'
 - **视频刷课**：按 1 倍速真实时间挂机
 - **图文完成**：图文任务自动完成
 - **章节测验**：客观题 LLM 自动答题；简答/填空类主观题留空直接交卷，不阻塞流程
-- **考试**：自动作答、自动交卷、不满分自动重考刷分
-- **风控自愈**：触发 9010 验证码风控时自动识别过码，无需人工干预，考试滑块验证码采用开源项目<a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>的识别，准确率高达**99%**
+- **考试**：自动作答、自动交卷、不满分自动重考刷分，考试滑块验证码采用开源项目<a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>的识别，准确率高达**99%**
+- **风控自愈**：触发 9010 验证码风控时自动识别过码，无需人工干预
 - **网络自愈**：长挂机心跳撞上被回收的 keep-alive 连接自动重发，单章节异常不中断整体流程
 
 ## 环境准备
