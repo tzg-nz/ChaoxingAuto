@@ -56,7 +56,7 @@ AttributeError: 'NoneType' object has no attribute 'get'
 pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow opencv-python ddddocr
 ```
 
-- 字形比对基准字体（思源黑体 CN Normal）：不随仓库分发，首次运行时自动从 jsdelivr 下载
+- 字形比对基准字体（思源黑体 CN Normal）：已随仓库分发（`fonts/` 目录），克隆即用，无需联网下载
 - `cxsecret_map.json`：字体映射缓存，首次运行自动生成，后续自动积累新字
 - `错题报告/`：满分模式失败的错题报告输出目录，自动创建
 - `考试答题日志/`：考试答题日志输出目录，自动创建
