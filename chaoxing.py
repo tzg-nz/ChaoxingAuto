@@ -264,6 +264,7 @@ class ChaoXing:
         }
         meta_response = self.__get_course_list_meta()
         soup = BeautifulSoup(meta_response.content, 'html.parser')
+
         # 课程页有两种服务端渲染：mooc2-ans（有 #myLearn 这套隐藏域）和
         # mooc1-2「学生端」（没有这些元素）。缺元素时按下面的默认值提交同样
         # 能拿到全部课程（实测），逐个兜底，不再 .get 直接崩
@@ -386,6 +387,7 @@ class ChaoXing:
         }
         meta_response = self.__get_course_meta(index)
         soup = BeautifulSoup(meta_response.content, 'html.parser')
+
         # 课程入口页有两代形态，两种都要吃得下：
         #   a) 旧 mooc2-ans 服务端渲染页：courseid/clazzid/cpi/enc… 都在隐藏域里；
         #   b) 新 mooc2-ans-vue 单页应用：返回几 KB 的 JS 壳、一个隐藏域都没有，
@@ -2095,15 +2097,15 @@ class ChaoXing:
         for ex in exams:
             done = '完成' in ex['status'] or '批阅' in ex['status']
             score = ex.get('score')
-            # 不满分的已完成考试视同待做（❌ 重考刷分），与 __run_pending_exams 判定一致
+            # 考过不满分的重考前会先询问（❓），与 __run_pending_exams 判定一致
             retake = done and score is not None and score < self.EXAM_FULL_SCORE
             seg = ['上次成绩 %s 分' % score if done and score is not None
                    else (ex['status'] or '未知')]
             if retake:
-                seg.append('不满分待重考')
+                seg.append('重考前会询问')
             seg.append('截止 %s' % (ex['deadline'] or '')[:16])
             print('%s [%s] %s（%s）' % (
-                '✅' if done and not retake else '❌',
+                '❓' if retake else ('✅' if done else '❌'),
                 ex['exam_id'], ex['name'], '，'.join(seg)))
 
     # 任务点计数：按 mode 统计 (已完成数, 总数)。1个视频/1个文档/1个测验各算1个任务点：
@@ -2187,8 +2189,22 @@ class ChaoXing:
             f.write('\n'.join(lines) + '\n')
         print('💾 答题日志已保存: %s' % path)
 
-    # 27.7、跑全部待做考试：未做的直接做，已完成但不满分的重考刷分（取最高成绩规则）；
-    # 自动作答保存并答完自动交卷；main 的 exam 不传 exam_id 与 all 尾部共用
+    # 考过的考试重考确认：替代旧的「不满分下次调用自动重考」——是否刷分交回用户手里。
+    # y/yes/是 才重考；其余（含直接回车、n、管道/重定向下的 EOF）一律跳过
+    @staticmethod
+    def __confirm_retake(ex):
+        try:
+            ans = input('✍️ 考试「%s」已考过（上次 %s 分），重新考试刷分？(y/n): ' % (
+                ex['name'], ex.get('score')))
+        except (EOFError, KeyboardInterrupt):
+            ans = 'n'
+        if str(ans).strip().lower() in ('y', 'yes', '是'):
+            return True
+        print('⏭️ 跳过考试 %s（不重考）' % ex['name'])
+        return False
+
+    # 27.7、跑全部待做考试：未做的直接做；考过但不满分的先问 y/n（同意才重考刷分，
+    # 满分无提升空间不问）；自动作答保存并答完自动交卷；main 的 exam 不传 exam_id 与 all 尾部共用
     def __run_pending_exams(self):
         try:
             exams = self.get_exam_list()
@@ -2201,23 +2217,26 @@ class ChaoXing:
             if '完成' not in st and '批阅' not in st:
                 todo.append(ex)  # 未做：直接做
                 continue
-            # 已完成：不满分也算待做，重考刷分（取最高成绩规则，不会更差）；
+            # 已完成：是否重考先问用户（取最高成绩规则，刷分不会更差）；
             # 分数优先用列表自带，缺失才拉批阅页补
             score = ex.get('score')
             if score is None:
                 score = self.__get_exam_score(ex)
             if score is None:
                 continue  # 成绩未出（刚交卷/批阅中），不盲考
-            if score < self.EXAM_FULL_SCORE:
-                ex['score'] = score
-                todo.append(ex)
+            if score >= self.EXAM_FULL_SCORE:
+                continue  # 满分无提升空间，不问不刷
+            ex['score'] = score
+            if not self.__confirm_retake(ex):
+                continue
+            todo.append(ex)
         if not todo:
             print('✍️ 没有待做的考试')
             return
         for ex in todo:
             head = '🚀 进入考试 %s' % ex['name']
             if 'score' in ex:
-                head += '（上次成绩 %s 分，不满分待重考）' % ex['score']
+                head += '（上次成绩 %s 分，重考刷分）' % ex['score']
             else:
                 head += '（截止 %s）' % (ex['deadline'] or '')[:16]
             print(head)
@@ -2231,7 +2250,8 @@ class ChaoXing:
     # main：index 是第几个课程；chapter_id 传了就只做这个章节，不传默认全部做；
     # mode='all' 全流程（默认，章节任务 + 待做考试）/ 'course' 只刷课程（视频+图文+测验，不碰考试）
     # / 'watch' 视频+图文（测验/考试不碰）/ 'test' 只刷测验 / 'exam' 只跑考试
-    # （exam_id 传了只做这一场，不传则把所有待做的考试都做一遍）。
+    # （exam_id 传了只做这一场且自动进入考试模式，不必同时传 mode='exam'；
+    #   不传则把所有待做的考试都做一遍——考过但不满分的先问 y/n 再重考）。
     # full_score=False（默认）测验客观题答完提交一次即收工（简答题一律不作答留空待批阅）；
     # True 时客观题未全对自动重做，最多 QUIZ_MAX_ROUNDS 轮争取满分
     # 答完自动交卷（交卷才有成绩，等超时收卷要白等限时）；限时耗尽自动重考（一次运行最多 3 次）
@@ -2251,25 +2271,31 @@ class ChaoXing:
         user.save_log = save_log
         # no_submit=True 时只作答保存不交卷（答案留在服务端，可自行检查后手动交）
         user.no_submit = no_submit
-        if mode == 'exam':
+        # exam_id 传了即视为考试模式：mode 忘写 'exam' 时旧逻辑会静默忽略 exam_id，
+        # 整门课刷完还把待做考试全做一遍——与「只考这一场」的意图正好相反
+        if mode == 'exam' or exam_id:
+            if mode != 'exam':
+                print('ℹ️ 已传 exam_id，自动按单场考试模式执行（mode=%s 不生效）' % mode)
             if exam_id:
-                # 单场模式：先查列表带上次成绩，已交卷且不满分直接从重考入口进
+                # 单场模式：先查列表带上次成绩；考过的先问 y/n，同意才走重考入口
                 try:
                     ex = next((e for e in user.get_exam_list()
                                if e['exam_id'] == str(exam_id)), None)
                 except Exception:
                     ex = None
-                if ex:
-                    head = '🚀 进入考试 %s' % ex['name']
-                    if ex.get('score') is not None:
-                        head += '（上次成绩 %s 分）' % ex['score']
-                    print(head)
-                user.finish_exam(
-                    user.courseid, user.clazzid, exam_id, user.cpi,
-                    first_retake=bool(ex and ex.get('score') is not None
-                                      and ex['score'] < user.EXAM_FULL_SCORE))
+                if ex and ex.get('score') is not None:
+                    if not user.__confirm_retake(ex):
+                        return
+                    print('🚀 进入考试 %s（重考刷分）' % ex['name'])
+                    user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
+                                     first_retake=True)
+                else:
+                    if ex:
+                        print('🚀 进入考试 %s' % ex['name'])
+                    user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
+                                     first_retake=False)
             else:
-                # 不传 exam_id：把所有待做的考试都做一遍
+                # 不传 exam_id：把所有待做的考试都做一遍（考过的逐场询问是否重考）
                 user.__run_pending_exams()
             return
 
