@@ -2276,8 +2276,6 @@ class ChaoXing:
         # exam_id 传了即视为考试模式：mode 忘写 'exam' 时旧逻辑会静默忽略 exam_id，
         # 整门课刷完还把待做考试全做一遍——与「只考这一场」的意图正好相反
         if mode == 'exam' or exam_id:
-            if mode != 'exam':
-                print('ℹ️ 已传 exam_id，自动按单场考试模式执行（mode=%s 不生效）' % mode)
             if exam_id:
                 # 单场模式：点名要考的不询问，考过的直接走重考入口
                 try:
