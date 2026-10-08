@@ -2189,8 +2189,8 @@ class ChaoXing:
             f.write('\n'.join(lines) + '\n')
         print('💾 答题日志已保存: %s' % path)
 
-    # 考过的考试重考确认：替代旧的「不满分下次调用自动重考」——是否刷分交回用户手里。
-    # y/yes/是 才重考；其余（含直接回车、n、管道/重定向下的 EOF）一律跳过
+    # 考过的考试重考确认：只在 main 全流程（mode='all'）结尾用——是否刷分交回用户
+    # 手里。y/yes/是 才重考；其余（含直接回车、n、管道/重定向下的 EOF）一律跳过
     @staticmethod
     def __confirm_retake(ex):
         try:
@@ -2203,9 +2203,10 @@ class ChaoXing:
         print('⏭️ 跳过考试 %s（不重考）' % ex['name'])
         return False
 
-    # 27.7、跑全部待做考试：未做的直接做；考过但不满分的先问 y/n（同意才重考刷分，
-    # 满分无提升空间不问）；自动作答保存并答完自动交卷；main 的 exam 不传 exam_id 与 all 尾部共用
-    def __run_pending_exams(self):
+    # 27.7、跑全部待做考试：未做的直接做；考过但不满分的是否重考由 ask 决定——
+    # main 全流程结尾（mode='all'）ask=True 逐场问 y/n，mode='exam' 批量点名跑考试
+    # ask=False 不问直接刷分（取最高成绩规则）；自动作答保存并答完自动交卷
+    def __run_pending_exams(self, ask=True):
         try:
             exams = self.get_exam_list()
         except Exception as e:
@@ -2227,7 +2228,7 @@ class ChaoXing:
             if score >= self.EXAM_FULL_SCORE:
                 continue  # 满分无提升空间，不问不刷
             ex['score'] = score
-            if not self.__confirm_retake(ex):
+            if ask and not self.__confirm_retake(ex):
                 continue
             todo.append(ex)
         if not todo:
@@ -2250,8 +2251,9 @@ class ChaoXing:
     # main：index 是第几个课程；chapter_id 传了就只做这个章节，不传默认全部做；
     # mode='all' 全流程（默认，章节任务 + 待做考试）/ 'course' 只刷课程（视频+图文+测验，不碰考试）
     # / 'watch' 视频+图文（测验/考试不碰）/ 'test' 只刷测验 / 'exam' 只跑考试
-    # （exam_id 传了只做这一场且自动进入考试模式，不必同时传 mode='exam'；
-    #   不传则把所有待做的考试都做一遍——考过但不满分的先问 y/n 再重考）。
+    # （exam_id 传了只做这一场且自动进入考试模式，不必同时传 mode='exam'，点名
+    #   要考的不询问直接做；不传 exam_id 时——mode='all' 全流程结尾对考过但不满
+    #   分的逐场问 y/n，mode='exam' 批量点名跑考试不问直接刷分）。
     # full_score=False（默认）测验客观题答完提交一次即收工（简答题一律不作答留空待批阅）；
     # True 时客观题未全对自动重做，最多 QUIZ_MAX_ROUNDS 轮争取满分
     # 答完自动交卷（交卷才有成绩，等超时收卷要白等限时）；限时耗尽自动重考（一次运行最多 3 次）
@@ -2277,26 +2279,22 @@ class ChaoXing:
             if mode != 'exam':
                 print('ℹ️ 已传 exam_id，自动按单场考试模式执行（mode=%s 不生效）' % mode)
             if exam_id:
-                # 单场模式：先查列表带上次成绩；考过的先问 y/n，同意才走重考入口
+                # 单场模式：点名要考的不询问，考过的直接走重考入口
                 try:
                     ex = next((e for e in user.get_exam_list()
                                if e['exam_id'] == str(exam_id)), None)
                 except Exception:
                     ex = None
-                if ex and ex.get('score') is not None:
-                    if not user.__confirm_retake(ex):
-                        return
-                    print('🚀 进入考试 %s（重考刷分）' % ex['name'])
-                    user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
-                                     first_retake=True)
-                else:
-                    if ex:
-                        print('🚀 进入考试 %s' % ex['name'])
-                    user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
-                                     first_retake=False)
+                if ex:
+                    head = '🚀 进入考试 %s' % ex['name']
+                    if ex.get('score') is not None:
+                        head += '（上次成绩 %s 分，直接重考）' % ex['score']
+                    print(head)
+                user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
+                                 first_retake=bool(ex and ex.get('score') is not None))
             else:
-                # 不传 exam_id：把所有待做的考试都做一遍（考过的逐场询问是否重考）
-                user.__run_pending_exams()
+                # mode='exam' 批量：也是点名跑考试，不询问——未做的做、考过不满分的直接重考
+                user.__run_pending_exams(ask=False)
             return
 
         # 实时任务点计数以章节树基线初始化，任务点完成时在 finish_* 内部+1并即时输出进度条

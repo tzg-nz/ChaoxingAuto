@@ -46,7 +46,7 @@ AttributeError: 'NoneType' object has no attribute 'get'
 - **视频刷课**：按 1 倍速真实时间挂机
 - **图文完成**：图文任务自动完成
 - **章节测验**：客观题 LLM 自动答题；简答/填空类主观题留空直接交卷，不阻塞流程
-- **考试**：自动作答、自动交卷；考过但不满分的考试重考前询问 y/n，确认才刷分。滑块缺口识别为内置模块 `slider_gap.py`（算法源自开源项目 <a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>，已内化不依赖外部项目）
+- **考试**：自动作答、自动交卷；考过但不满分的考试——全流程（`all`）结尾逐场询问 y/n 确认才重考，点名要考的（传 `exam_id` 或 `mode='exam'`）不询问直接做。滑块缺口识别为内置模块 `slider_gap.py`（算法源自开源项目 <a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>，已内化不依赖外部项目）
 - **风控自愈**：触发 9010 验证码风控时自动识别过码，无需人工干预
 - **网络自愈**：长挂机心跳撞上被回收的 keep-alive 连接自动重发，单章节异常不中断整体流程
 
@@ -94,7 +94,7 @@ ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 | `index` | int | 必填 | 第几个课程（从 1 开始），和 `courses()` 输出的行首序号一一对应 |
 | `chapter_id` | int/str | None | 只刷指定章节；None = 整门课。章节 id 看 `progress()` 输出行首方括号里的数字，如 `[1240678458]` |
 | `mode` | str | `'all'` | 刷什么，五选一，见下表 |
-| `exam_id` | int/str | None | 只做这一场考试（传了自动按考试模式执行，不必再传 `mode='exam'`）；不传则把该课程所有「待做」的考试做一遍，考过但不满分的逐场询问 y/n 是否重考 |
+| `exam_id` | int/str | None | 只做这一场考试（传了自动按考试模式执行，点名要考**不询问直接做**）；不传时：`mode='all'` 结尾对考过但不满分的逐场询问 y/n 是否重考，`mode='exam'` 批量**不询问**直接重考 |
 | `full_score` | bool | False | 测验满分模式，见「答题策略」。False：客观题答完提交一次即收工；True：客观题未全对自动重做，最多 3 轮争取满分 |
 | `show_prompt` | bool | False | True 时每道题都打印发给大模型的完整提示词，用于调试或围观模型怎么答题（测验/考试都生效） |
 | `save_log` | bool | False | True 时保存考试答题日志到 `考试答题日志/`。**只有没考满分（含批阅中未出分）的场次才落盘**，满分直接丢弃——日志用于复盘错题，满分没有复盘价值；每轮重考独立存档不覆盖 |
@@ -108,7 +108,7 @@ ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 | `'course'` | 只刷课程内容：视频 + 图文 + 测验，不碰考试 |
 | `'watch'` | 只刷视频和图文（测验/考试都不碰） |
 | `'test'` | 只刷章节测验（视频/图文/考试都不碰） |
-| `'exam'` | 只跑考试，可配 `exam_id` 指定单场（传了 exam_id 时其他模式也会自动切到这里） |
+| `'exam'` | 只跑考试，可配 `exam_id` 指定单场（传了 exam_id 时其他模式也会自动切到这里；批量/单场均不询问直接做） |
 
 **progress() / courses()**
 
