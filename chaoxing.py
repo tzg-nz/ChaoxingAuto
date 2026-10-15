@@ -943,10 +943,16 @@ class ChaoXing:
 
     # ---------- cxsecret 字体反爬解码 ----------
 
-    # 16、从题面 HTML 抽内嵌 base64 TTF（@font-face 的 data:application/font-ttf;base64,...）
+    # 16、从题面 HTML 抽内嵌字体：优先按 @font-face 的字体 MIME 匹配
+    # （考试卷/测验页都可能混入图片类 base64，无脑取首个 base64 会拿到图片），
+    # 旧逻辑（首个大段 base64）作兜底
     @staticmethod
     def __extract_secret_font(html):
-        m = re.search(r'base64,([A-Za-z0-9+/=]+)', html)
+        m = re.search(r'data:application/(?:font-ttf|x-font-ttf|font-woff2?|octet-stream)'
+                      r'[;]base64,([A-Za-z0-9+/=]+)', html)
+        if m:
+            return base64.b64decode(m.group(1))
+        m = re.search(r'base64,([A-Za-z0-9+/=]{1000,})', html)
         return base64.b64decode(m.group(1)) if m else None
 
     # 17、基准字体（思源黑体 CN Normal）：本地没有就下载
@@ -1008,80 +1014,47 @@ class ChaoXing:
     # 缓存结构 {"table": {...}, "verified": ["字体md5摘要"...]}。字体池可能有几十个字体文件，
     # 但实测各字体映射一致（服务端=固定密文表+轮换字体）；verified 里的字体直接用表、零比对，
     # 新字体首次露面才全量校验一次：完全一致→进免检名单；发现新密字→并入表；冲突→警告走人工 CXSECRET_MAP 兜底
+    # 19、建立密文映射：一张表对应一个字体，缓存按字体 md5 隔离，
+    # 结构 v3 = {"fonts": {"<md5前8位>": {密字: 真字}}}。
+    # 章节测验密字码位池巨大、跨字体基本不相交（旧全局表无害）；但考试卷是
+    # 「常用字置换」——同一码位在不同试卷置换成不同真字，全局合并表必然互相污染
+    # （安全教育→安全为育 全是它），必须按字体隔离；旧格式无法归属字体，废弃重建
     def __build_secret_map(self, font_bytes):
-        table, verified = {}, []
+        fonts = {}
         if os.path.exists(self.CXSECRET_CACHE):
             try:
                 with open(self.CXSECRET_CACHE, encoding='utf-8') as f:
                     data = json.load(f)
-                if isinstance(data, dict) and isinstance(data.get('table'), dict):
-                    table = data['table']
-                    verified = [m for m in (data.get('verified') or []) if isinstance(m, str)]
-                elif isinstance(data, dict) and data:
-                    # 旧格式迁移：纯 {密字:真字} 单表、{"<md5>": {..}} 多字体、{"md5":..,"map":{..}} 单字体
-                    merged, conflict, mds = {}, [], []
-                    if data.get('md5') and isinstance(data.get('map'), dict):
-                        mds.append(data['md5'])
-                        merged = dict(data['map'])
-                    else:
-                        for md5, mp in data.items():
-                            if isinstance(mp, dict):
-                                mds.append(md5)
-                                for k, v in mp.items():
-                                    if k in merged and merged[k] != v:
-                                        conflict.append(k)
-                                    merged[k] = v
-                        if not mds:
-                            merged = {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
-                    table = merged
-                    verified = mds
-                    self.__save_secret_cache(table, verified)
-                    print('🔤 旧缓存已迁移为全局密文表（%d 字%s）' % (
-                        len(table), '，冲突 %d 处以最后为准' % len(conflict) if conflict else ''))
+                if isinstance(data, dict) and isinstance(data.get('fonts'), dict):
+                    fonts = {k: v for k, v in data['fonts'].items() if isinstance(v, dict)}
+                elif data:
+                    print('🔤 旧全局缓存废弃（跨字体合并表会互相污染），改为按字体重建')
             except (ValueError, OSError):
                 pass
 
         fmd5 = hashlib.md5(font_bytes).hexdigest()[:8] if font_bytes else ''
-        if not table:
-            print('🔤 首次运行，全量字形比对建表（约 1 分钟）...')
+        table = dict(fonts.get(fmd5) or {})
+        if fmd5 and not table:
+            print('🔤 新字体 %s 自动字形比对建表（约 1 分钟）...' % fmd5)
             table = self.__auto_match_secret(font_bytes, self.__ensure_base_font())
-            if fmd5:
-                verified.append(fmd5)
-            self.__save_secret_cache(table, verified)
-            print('🔤 自动识别 %d 字，映射已缓存到 %s' % (len(table), self.CXSECRET_CACHE))
-        elif fmd5 and fmd5 not in verified:
-            print('🔤 新字体 %s 首次出现，校验与全局表一致性...' % fmd5)
-            fm = self.__auto_match_secret(font_bytes, self.__ensure_base_font())
-            conflict = {k: (table[k], v) for k, v in fm.items() if k in table and table[k] != v}
-            new_keys = {k: v for k, v in fm.items() if k not in table}
-            if conflict:
-                print('🔤 ⚠️ 字体 %s 有 %d 处映射与全局表不同:' % (fmd5, len(conflict)))
-                for k, (old, new) in conflict.items():
-                    print('   %s: 表里=%s 字体=%s' % (k, old, new))
-                print('   请人工核对后把正确映射加入脚本顶部 CXSECRET_MAP 兜底')
-            if new_keys:
-                table.update(new_keys)
-                print('🔤 字体 %s 发现 %d 个新密字，并入全局表:' % (fmd5, len(new_keys)))
-                for k, v in new_keys.items():
-                    print('   %s → %s' % (k, v))
-            if not conflict and not new_keys:
-                print('🔤 字体 %s 与全局表完全一致，加入免检名单' % fmd5)
-            verified.append(fmd5)
-            self.__save_secret_cache(table, verified)
-        else:
-            print('🔤 cxsecret 映射命中缓存（%d 字）' % len(table))
+            if table:
+                fonts[fmd5] = table
+                self.__save_secret_cache(fonts)
+            print('🔤 自动识别 %d 字，已按字体缓存到 %s' % (len(table), self.CXSECRET_CACHE))
+        elif fmd5:
+            print('🔤 字体 %s 映射命中缓存（%d 字）' % (fmd5, len(table)))
 
-        conflict = [k for k, v in self.CXSECRET_MAP.items() if k in table and table[k] != v]
-        if conflict:
-            print('🔤 ⚠️ 自动结果与人工核对冲突: %s，以人工核对为准' % conflict)
+        # 人工核对表只作缺口补充（setdefault）：人工条目同样字体相关，
+        # 无条件覆盖当前字体的自动结果反而会引入错误
         mapping = dict(table)
-        mapping.update(self.CXSECRET_MAP)
+        for k, v in self.CXSECRET_MAP.items():
+            mapping.setdefault(k, v)
         return mapping
 
-    # 19.1、保存密文映射缓存
-    def __save_secret_cache(self, table, verified):
+    # 19.1、保存按字体隔离的密文映射缓存
+    def __save_secret_cache(self, fonts):
         with open(self.CXSECRET_CACHE, 'w', encoding='utf-8') as f:
-            json.dump({'table': table, 'verified': sorted(verified)}, f, ensure_ascii=False, indent=2)
+            json.dump({'fonts': fonts}, f, ensure_ascii=False, indent=1)
 
     # 20、密文文本解码：映射表内的码位替换成真字，表外原样保留
     @staticmethod
@@ -1224,6 +1197,10 @@ class ChaoXing:
             return [], prompt
         print('   💬 %s' % reply.replace('\n', ' '))
         if is_judge:
+            # 拒答类回复（乱码/无法识别）走题型保底：不能让回复里的「无法」二字
+            # 被 不 关键字命中误判成「错」——这就是旧版判断题"莫名有保底"的真相
+            if re.search(r'无法|抱歉|乱码|看不懂|识别不', reply):
+                return [], prompt
             # 先找回复里的 A/B，没有再按 对/错 关键字兜底；判断题只取一个
             groups = re.findall(r'[AB]+', reply.upper())
             best = max(groups, key=len) if groups else ''
@@ -1251,6 +1228,20 @@ class ChaoXing:
             groups = re.findall(r'[%s]+' % L, up)
             picked = list(max(groups, key=len)) if groups else []
         return [d for d in [x for x, _ in options] if d in picked], prompt
+
+    # 23.1、模型未识别出答案时的题型保底：单选→第一个选项(A)、多选→全选、判断→A(对)。
+    # 保底为了不交白卷：空白必 0 分，多选全选命中率远高于空白；full_score 模式下
+    # 保底答错的题会带错误答案进下一轮，不影响重试机制
+    @staticmethod
+    def __fallback_answer(options, qtype='', type_name=''):
+        if not options:
+            return []
+        if any(d in ('true', 'false') for d, _ in options):
+            return ['true']
+        datas = [d for d, _ in options]
+        if str(qtype) == '1' or '多选' in (type_name or ''):
+            return datas
+        return datas[:1]
 
     # 24、组表单提交：隐藏字段全部沿用题面现值，填 answer{qid} + answeraqid（全部 qid 逗号串）；
     # dry_run=True 只打印不提交；题面 JS 提交前会在 URL 追加 ua/formType/saveStatus/pos/version，enc/pyFlag 为空
@@ -1383,6 +1374,11 @@ class ChaoXing:
                     picked, prompt = self.__ask_llm(q['stem'], q['options'], wrong_hist[q['qid']],
                                                     qtype=q.get('qtype', ''))
                     last_prompt[q['qid']] = prompt
+                    if not picked:
+                        picked = self.__fallback_answer(q['options'], q.get('qtype', ''),
+                                                        q.get('type_name', ''))
+                        if picked:
+                            print('   🔒 模型未识别，按题型保底作答')
                     print('   答案：%s' % self.__fmt_answer(picked))
                 answers[q['qid']] = picked
             if dry_run:
@@ -1805,9 +1801,11 @@ class ChaoXing:
         return sess
 
     # 27.3、解析题面页：只取 #submitTest 表单内带 name 的 hidden（与浏览器 serialize 完全一致），
-    # 题干/选项顺带解出；判断题选项 data 是 true/false，选择/多选是字母
-    @staticmethod
-    def __parse_exam_page(html, page_url):
+    # 题干/选项顺带解出；判断题选项 data 是 true/false，选择/多选是字母。
+    # 考试卷字体是「常用字置换」：HTML 里写的本来就是错位后的常用字（如 为↔教），
+    # 字体把置换码位渲染成真字，学生看着正常——不接解密的话置换位会以错字发给大模型
+    # （「安全教育→安全为育」）。每题页内嵌字体后按字体 md5 建映射再解码（不同卷置换不同）
+    def __parse_exam_page(self, html, page_url):
         soup = BeautifulSoup(html, 'html.parser')
         form = soup.find('form', id='submitTest')
         if form is None:
@@ -1827,6 +1825,16 @@ class ChaoXing:
         for span in soup.select('span[data][qid]'):
             p = span.find_next('div', class_='answer_p')
             options.append((span.get('data', ''), p.get_text(' ', strip=True) if p is not None else ''))
+        mapping = {}
+        try:
+            font = self.__extract_secret_font(html)
+            if font:
+                mapping = self.__build_secret_map(font)
+        except Exception as e:
+            print('   ⚠️ 考试字体解密失败（按原文作答）: %s: %s' % (type(e).__name__, e))
+        if mapping:
+            stem = self.__decode_cxsecret(stem, mapping)
+            options = [(d, self.__decode_cxsecret(t, mapping)) for d, t in options]
         total_m = re.search(r'题量:\s*(\d+)', html)
         return {'page_url': page_url, 'fields': fields, 'fd': fd, 'qid': qid,
                 'qtype': fd.get('type' + qid, ''),
@@ -1946,6 +1954,11 @@ class ChaoXing:
             picked, prompt = self.__ask_llm(page['stem'], page['options'],
                                             qtype=page.get('qtype', ''),
                                             type_name=page.get('type_name', ''))
+            if not picked:
+                picked = self.__fallback_answer(page['options'], page.get('qtype', ''),
+                                                page.get('type_name', ''))
+                if picked:
+                    print('   🔒 模型未识别，按题型保底作答')
             answer = ''.join(sorted(picked))  # 多选按字母序提交（与服务端 sortMultiAnswer 一致）
             print('   答案：%s' % self.__fmt_answer(picked))
             if getattr(self, 'save_log', False):
