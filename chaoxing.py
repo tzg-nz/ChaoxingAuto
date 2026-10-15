@@ -944,12 +944,14 @@ class ChaoXing:
     # ---------- cxsecret 字体反爬解码 ----------
 
     # 16、从题面 HTML 抽内嵌字体：优先按 @font-face 的字体 MIME 匹配
-    # （考试卷/测验页都可能混入图片类 base64，无脑取首个 base64 会拿到图片），
+    # （考试卷/测验页都可能混入图片类 base64，无脑取首个 base64 会拿到图片）。
+    # 实测超星实际写法是 data:application/font-ttf;charset=utf-8;base64,...
+    # ——MIME 与 base64 之间还夹着 charset 参数，正则要允许中间有任意 ;参数 段；
     # 旧逻辑（首个大段 base64）作兜底
     @staticmethod
     def __extract_secret_font(html):
         m = re.search(r'data:application/(?:font-ttf|x-font-ttf|font-woff2?|octet-stream)'
-                      r'[;]base64,([A-Za-z0-9+/=]+)', html)
+                      r'(?:;[^,;]+)*;base64,([A-Za-z0-9+/=]+)', html)
         if m:
             return base64.b64decode(m.group(1))
         m = re.search(r'base64,([A-Za-z0-9+/=]{1000,})', html)
@@ -967,8 +969,14 @@ class ChaoXing:
 
     # 18、自动字形比对：渲染密文字与思源黑体全部 CJK 逐字 IoU（归一化到 128 网格），取最高分为真字
     # 实测当前字体 18 个密文字全部自动识别正确（含 IoU 仅 0.57 的"对"，靠拉伸归一化区分结构）
-    @staticmethod
-    def __auto_match_secret(font_bytes, base_font_path, px=100, grid=128):
+    # 基准字形按位打包后进程内缓存（约 55MB）：一门课几十个测验各带一个字体，
+    # 不缓存则每个字体都要重渲染 2.8 万个基准字形（实测 ~1 分钟/次）；
+    # 打包位图 + popcount 查表算 IoU，结果与逐像素 bool 运算完全一致
+    __BASE_GLYPH_CACHE = None  # (key, codes, packed, counts)
+    __POPCOUNT = None
+
+    @classmethod
+    def __auto_match_secret(cls, font_bytes, base_font_path, px=100, grid=128):
         def glyph_arr(font, code):
             img = Image.new('L', (px * 3, px * 3), 0)
             ImageDraw.Draw(img).text((px * 1.5, px * 1.5), chr(code), font=font, fill=255, anchor='mm')
@@ -978,10 +986,6 @@ class ChaoXing:
             # 拉伸填满网格：消除整体宽高比差异，只比笔画结构
             return np.array(img.crop(box).resize((grid, grid)), dtype=np.uint8) > 100
 
-        def iou(a, b):
-            union = (a | b).sum()
-            return (a & b).sum() / union if union else 0.0
-
         secret_codes = [c for c in TTFont(io.BytesIO(font_bytes)).getBestCmap() if c >= 0x3400]
         sfont = ImageFont.truetype(io.BytesIO(font_bytes), px)
         secrets = {}
@@ -990,24 +994,42 @@ class ChaoXing:
             if arr is not None:
                 secrets[code] = arr
 
-        bfont = ImageFont.truetype(base_font_path, px)
-        bases = []
-        for code, _ in TTFont(base_font_path).getBestCmap().items():
-            if not (0x3400 <= code <= 0x9FFF):
-                continue
-            arr = glyph_arr(bfont, code)
-            if arr is not None:
-                bases.append((code, arr))
+        if cls.__POPCOUNT is None:
+            cls.__POPCOUNT = np.array([bin(i).count('1') for i in range(256)], dtype=np.uint8)
+        key = (str(base_font_path), px, grid)
+        if cls.__BASE_GLYPH_CACHE is None or cls.__BASE_GLYPH_CACHE[0] != key:
+            bfont = ImageFont.truetype(base_font_path, px)
+            codes, packs, counts = [], [], []
+            for code, _ in TTFont(base_font_path).getBestCmap().items():
+                if not (0x3400 <= code <= 0x9FFF):
+                    continue
+                arr = glyph_arr(bfont, code)
+                if arr is None:
+                    continue
+                codes.append(code)
+                packs.append(np.packbits(arr.reshape(-1)))
+                counts.append(float(arr.sum()))
+            cls.__BASE_GLYPH_CACHE = (key, np.array(codes), np.array(packs, dtype=np.uint8),
+                                      np.array(counts, dtype=np.float64))
+        _key, bcodes, bpacks, bcounts = cls.__BASE_GLYPH_CACHE
 
         mapping = {}
+        step = 4096  # 分块算，控制临时数组内存
         for code, sarr in secrets.items():
-            best_code, best = None, 0.0
-            for cand, arr in bases:
-                v = iou(sarr, arr)
-                if v > best:
-                    best, best_code = v, cand
-            if best_code is not None:
-                mapping[chr(code)] = chr(best_code)
+            sp = np.packbits(sarr.reshape(-1))
+            sc = float(sarr.sum())
+            best_i, best_v = -1, 0.0
+            for s0 in range(0, len(bcodes), step):
+                e = min(s0 + step, len(bcodes))
+                inter = cls.__POPCOUNT[np.bitwise_and(bpacks[s0:e], sp)].sum(axis=1).astype(np.float64)
+                union = bcounts[s0:e] + sc - inter
+                iou = np.zeros_like(inter)
+                np.divide(inter, np.maximum(union, 1e-9), out=iou, where=union > 0)
+                j = int(np.argmax(iou))  # 与原实现一致：并列时取码位靠前者
+                if float(iou[j]) > best_v:
+                    best_v, best_i = float(iou[j]), s0 + j
+            if best_i >= 0 and best_v > 0:
+                mapping[chr(code)] = chr(int(bcodes[best_i]))
         return mapping
 
     # 19、建立密文映射：全局一张 {密字: 真字} 表 + 字体免检名单，
