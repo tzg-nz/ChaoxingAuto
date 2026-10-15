@@ -55,6 +55,11 @@ class ChaoXing:
                               'SubsetOTF/CN/SourceHanSansCN-Normal.otf')
     # 密文映射全局缓存文件（与脚本同目录）：{"密字": "真字", ...}，全部字体共用一张表
     CXSECRET_CACHE = os.path.join(BASE_DIR, 'cxsecret_map.json')
+    # 缓存格式/算法版本：v4 = 按字体隔离 + 等比归一化 + 同分辨率精排 + 常用度裁决。
+    # 版本号不匹配的旧缓存直接废弃重建（v1 拉伸归一化把「一」误配成「丨」；
+    # v2 精排跨尺度比分且密字用低分辨率字体渲染，把「刺」误配成「剌」；
+    # v3 缺常用度裁决，把「对」误配成日文异体字「対」）
+    CXSECRET_CACHE_VERSION = 4
     # 9010 风控验证码识别引擎（懒加载，进程内复用）
     __ocr = None
 
@@ -967,24 +972,52 @@ class ChaoXing:
                 f.write(r.content)
         return self.CXSECRET_BASE_FONT
 
-    # 18、自动字形比对：渲染密文字与思源黑体全部 CJK 逐字 IoU（归一化到 128 网格），取最高分为真字
-    # 实测当前字体 18 个密文字全部自动识别正确（含 IoU 仅 0.57 的"对"，靠拉伸归一化区分结构）
-    # 基准字形按位打包后进程内缓存（约 55MB）：一门课几十个测验各带一个字体，
-    # 不缓存则每个字体都要重渲染 2.8 万个基准字形（实测 ~1 分钟/次）；
-    # 打包位图 + popcount 查表算 IoU，结果与逐像素 bool 运算完全一致
+    # 常用度分级：GB2312 一级=0、二级=1、表外（含「対」这类日文异体字）=2。
+    # 精排近似并列时优先常用字——「对/対」「刺/剌」「一/丨」这类形近字的几何分数
+    # 只差千分位（实测 对 0.4891 vs 対 0.4997），纯 IoU 定不了；题面原文都是常用
+    # 中文，这个先验稳且只在并列时生效，不会推翻明显的几何胜者
+    @staticmethod
+    def __char_rank(ch):
+        try:
+            b = ch.encode('gb2312')
+        except UnicodeEncodeError:
+            return 2
+        return 0 if 16 <= b[0] - 0xA0 <= 55 else 1
+
+    # 18、自动字形比对：渲染密文字与思源黑体全部 CJK 逐字 IoU，取最高分为真字。
+    # 归一化用「等比放进正方形画布」而不是直接 resize 成正方形：后者会把
+    # 「一」（横）和「丨」（竖）都拉成实心矩形、IoU 几乎相等而误配（实测
+    # 「一种」解成「丨种」）；保留宽高比后单笔画字也能区分。
+    # 粗排 128 网格位图打包 + 进程内缓存（约 55MB，一门课几十个测验各带一个字体，
+    # 不缓存则每个字体都要重渲染 2.8 万个基准字形）；粗排前 topk 名再用 256 网格
+    # 精排，解决「刺/剌」这类极近似字形在粗网格下分不开的问题
     __BASE_GLYPH_CACHE = None  # (key, codes, packed, counts)
     __POPCOUNT = None
 
     @classmethod
-    def __auto_match_secret(cls, font_bytes, base_font_path, px=100, grid=128):
-        def glyph_arr(font, code):
-            img = Image.new('L', (px * 3, px * 3), 0)
-            ImageDraw.Draw(img).text((px * 1.5, px * 1.5), chr(code), font=font, fill=255, anchor='mm')
+    def __auto_match_secret(cls, font_bytes, base_font_path, px=100, grid=128,
+                            fine_px=200, fine_grid=256, topk=6, fine_margin=0.03):
+        def render(font, code, size):
+            img = Image.new('L', (size * 3, size * 3), 0)
+            ImageDraw.Draw(img).text((size * 1.5, size * 1.5), chr(code),
+                                     font=font, fill=255, anchor='mm')
+            return img
+
+        def glyph_arr(font, code, size=px, g=grid):
+            img = render(font, code, size)
             box = img.getbbox()
             if not box:
                 return None
-            # 拉伸填满网格：消除整体宽高比差异，只比笔画结构
-            return np.array(img.crop(box).resize((grid, grid)), dtype=np.uint8) > 100
+            crop = img.crop(box)
+            w, h = crop.size
+            side = max(w, h)
+            canvas = Image.new('L', (side, side), 0)
+            canvas.paste(crop, ((side - w) // 2, (side - h) // 2))
+            return np.array(canvas.resize((g, g)), dtype=np.uint8) > 100
+
+        def iou(a, b):
+            union = (a | b).sum()
+            return float((a & b).sum()) / float(union) if union else 0.0
 
         secret_codes = [c for c in TTFont(io.BytesIO(font_bytes)).getBestCmap() if c >= 0x3400]
         sfont = ImageFont.truetype(io.BytesIO(font_bytes), px)
@@ -1012,23 +1045,46 @@ class ChaoXing:
             cls.__BASE_GLYPH_CACHE = (key, np.array(codes), np.array(packs, dtype=np.uint8),
                                       np.array(counts, dtype=np.float64))
         _key, bcodes, bpacks, bcounts = cls.__BASE_GLYPH_CACHE
+        # 精排要密字/基准字用同一分辨率的字体对象渲染，否则密字是低分辨率放大图，
+        # 细节被抹平（实测会把「刺」判成「剌」）
+        bfont_fine = ImageFont.truetype(base_font_path, fine_px)
+        sfont_fine = ImageFont.truetype(io.BytesIO(font_bytes), fine_px)
 
         mapping = {}
         step = 4096  # 分块算，控制临时数组内存
         for code, sarr in secrets.items():
             sp = np.packbits(sarr.reshape(-1))
             sc = float(sarr.sum())
-            best_i, best_v = -1, 0.0
+            ious = np.empty(len(bcodes), dtype=np.float64)
             for s0 in range(0, len(bcodes), step):
                 e = min(s0 + step, len(bcodes))
                 inter = cls.__POPCOUNT[np.bitwise_and(bpacks[s0:e], sp)].sum(axis=1).astype(np.float64)
                 union = bcounts[s0:e] + sc - inter
-                iou = np.zeros_like(inter)
-                np.divide(inter, np.maximum(union, 1e-9), out=iou, where=union > 0)
-                j = int(np.argmax(iou))  # 与原实现一致：并列时取码位靠前者
-                if float(iou[j]) > best_v:
-                    best_v, best_i = float(iou[j]), s0 + j
-            if best_i >= 0 and best_v > 0:
+                blk = np.zeros_like(inter)
+                np.divide(inter, np.maximum(union, 1e-9), out=blk, where=union > 0)
+                ious[s0:e] = blk
+            k = min(topk, len(bcodes))
+            top = np.argpartition(-ious, k - 1)[:k]
+            top = top[np.argsort(-ious[top])]
+            best_i, best_v = int(top[0]), float(ious[top[0]])
+            # 精排：前 k 名统一用 256 网格重算，只在精排分数之间比大小
+            # （粗排 128 与精排 256 的 IoU 不同尺度，混比会让精排形同虚设）
+            fine = glyph_arr(sfont_fine, code, fine_px, fine_grid)
+            if fine is not None:
+                scored = []
+                for j in top:
+                    barr = glyph_arr(bfont_fine, int(bcodes[j]), fine_px, fine_grid)
+                    if barr is None:
+                        continue
+                    scored.append((iou(fine, barr), int(j)))
+                if scored:
+                    # 并列（差距 <= fine_margin）时按常用度定夺，其次才比精排分数
+                    top_v = max(v for v, _j in scored)
+                    near = [(v, j) for v, j in scored if top_v - v <= fine_margin]
+                    near.sort(key=lambda t: (cls.__char_rank(chr(int(bcodes[t[1]]))),
+                                             -t[0], t[1]))
+                    best_v, best_i = near[0]
+            if best_v > 0:
                 mapping[chr(code)] = chr(int(bcodes[best_i]))
         return mapping
 
@@ -1047,10 +1103,11 @@ class ChaoXing:
             try:
                 with open(self.CXSECRET_CACHE, encoding='utf-8') as f:
                     data = json.load(f)
-                if isinstance(data, dict) and isinstance(data.get('fonts'), dict):
+                if (isinstance(data, dict) and isinstance(data.get('fonts'), dict)
+                        and data.get('v') == self.CXSECRET_CACHE_VERSION):
                     fonts = {k: v for k, v in data['fonts'].items() if isinstance(v, dict)}
                 elif data:
-                    print('🔤 旧全局缓存废弃（跨字体合并表会互相污染），改为按字体重建')
+                    print('🔤 旧缓存废弃（格式/算法版本不符，跨字体合并表会互相污染），按字体重建')
             except (ValueError, OSError):
                 pass
 
@@ -1073,10 +1130,11 @@ class ChaoXing:
             mapping.setdefault(k, v)
         return mapping
 
-    # 19.1、保存按字体隔离的密文映射缓存
+    # 19.1、保存按字体隔离的密文映射缓存（带算法版本号）
     def __save_secret_cache(self, fonts):
         with open(self.CXSECRET_CACHE, 'w', encoding='utf-8') as f:
-            json.dump({'fonts': fonts}, f, ensure_ascii=False, indent=1)
+            json.dump({'v': self.CXSECRET_CACHE_VERSION, 'fonts': fonts},
+                      f, ensure_ascii=False, indent=1)
 
     # 20、密文文本解码：映射表内的码位替换成真字，表外原样保留
     @staticmethod

@@ -36,34 +36,70 @@ from chaoxing import ChaoXing  # noqa: E402
 
 
 def offline():
-    """离线：用样本字体跑字形匹配，与已核对过的期望映射逐条比对。"""
+    """离线：①字形匹配回归 ②密文→解码→与批阅页真值逐字对照（端到端）。"""
     font_path = os.path.join(BASE_DIR, 'tests', 'cxsecret_font.bin')
     exp_path = os.path.join(BASE_DIR, 'tests', 'cxsecret_expected.json')
-    if not (os.path.exists(font_path) and os.path.exists(exp_path)):
-        print('❌ 缺少样本文件（tests/cxsecret_font.bin 或 cxsecret_expected.json）')
-        return 1
+    case_path = os.path.join(BASE_DIR, 'tests', 'cxsecret_cases.json')
+    base = os.path.join(BASE_DIR, 'fonts', 'SourceHanSansCN-Normal.otf')
+    for p, what in ((font_path, '样本字体'), (exp_path, '期望映射'),
+                    (case_path, '真值样本'), (base, '基准字体')):
+        if not os.path.exists(p):
+            print('❌ 缺少%s: %s' % (what, p))
+            return 1
     import json
     expected = json.load(open(exp_path, encoding='utf-8'))
+    cases = json.load(open(case_path, encoding='utf-8'))['cases']
     font = open(font_path, 'rb').read()
-    base = os.path.join(BASE_DIR, 'fonts', 'SourceHanSansCN-Normal.otf')
-    if not os.path.exists(base):
-        print('❌ 缺少基准字体 %s（首次运行脚本会自动下载）' % base)
-        return 1
 
-    print('🔤 离线自检：样本字体 %d 字节，期望映射 %d 条' % (len(font), len(expected)))
+    print('🔤 ① 字形匹配回归：样本字体 %d 字节，期望 %d 条' % (len(font), len(expected)))
     got = ChaoXing._ChaoXing__auto_match_secret(font, base)
-    print('🔤 实际匹配 %d 条' % len(got))
     bad = {k: (expected[k], got.get(k)) for k in expected if got.get(k) != expected[k]}
     extra = {k: v for k, v in got.items() if k not in expected}
+    rc = 0
     if not bad and not extra:
-        print('✅ 全部 %d 个密字识别正确（与批阅页明文核对过的期望值完全一致）' % len(expected))
-        return 0
-    for k, (e, g) in bad.items():
-        print('   ❌ %s(U+%04X): 期望=%s 实际=%s' % (k, ord(k), e, g))
-    for k, v in extra.items():
-        print('   ⚠️ 多出 %s(U+%04X) -> %s' % (k, ord(k), v))
-    print('❌ 离线自检未通过：错 %d 条，多 %d 条' % (len(bad), len(extra)))
-    return 1
+        print('   ✅ %d 个密字全部识别正确' % len(expected))
+    else:
+        for k, (e, g) in bad.items():
+            print('   ❌ %s(U+%04X): 期望=%s 实际=%s' % (k, ord(k), e, g))
+        for k, v in extra.items():
+            print('   ⚠️ 多出 %s(U+%04X) -> %s' % (k, ord(k), v))
+        rc = 1
+
+    print('🔤 ② 端到端解码：%d 题密文题干 -> 批阅页明文真值' % len(cases))
+    # 走真实代码路径：__build_secret_map（含缓存读写与人工表补缺），缓存指向临时文件。
+    # 预置①的匹配结果进临时缓存，既省一次全量比对，也顺带覆盖「缓存命中」这条常用路径
+    import hashlib
+    import tempfile
+    tmp_cache = os.path.join(tempfile.gettempdir(), 'cxsecret_selftest.json')
+    with open(tmp_cache, 'w', encoding='utf-8') as f:
+        json.dump({'v': ChaoXing.CXSECRET_CACHE_VERSION,
+                   'fonts': {hashlib.md5(font).hexdigest()[:8]: got}}, f, ensure_ascii=False)
+    real_cache = ChaoXing.CXSECRET_CACHE
+    ChaoXing.CXSECRET_CACHE = tmp_cache
+    try:
+        user = ChaoXing('offline', 'offline')  # 不登录，只用它的解码方法
+        mapping = user._ChaoXing__build_secret_map(font)
+    finally:
+        ChaoXing.CXSECRET_CACHE = real_cache
+        try:
+            os.remove(tmp_cache)
+        except OSError:
+            pass
+    ok = 0
+    for i, c in enumerate(cases):
+        dec = ChaoXing._ChaoXing__decode_cxsecret(c['cipher'], mapping)
+        same = dec == c['truth']
+        ok += same
+        print('   %s 题%d' % ('✅' if same else '❌', i + 1))
+        if not same:
+            rc = 1
+            print('      真值: %s' % c['truth'][:80])
+            print('      解码: %s' % dec[:80])
+            print('      差异字: %s' % ' '.join(
+                '%s≠%s' % (a, b) for a, b in zip(c['truth'], dec) if a != b))
+    print('   通过 %d/%d 题' % (ok, len(cases)))
+    print('\n%s' % ('✅ 离线自检全部通过' if rc == 0 else '❌ 离线自检未通过'))
+    return rc
 
 
 def _stems(html):
