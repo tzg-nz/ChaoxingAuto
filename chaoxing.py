@@ -43,17 +43,11 @@ class ChaoXing:
     # 视频播放器页面地址，心跳上报需要带上这个 Referer
     VIDEO_REFERER = 'https://mooc1.chaoxing.com/ananas/modules/video/index.html?v=2026-0828-1810'
 
-    # cxsecret 人工核对的兜底映射（优先级最高，覆盖自动识别结果）
-    CXSECRET_MAP = {
-        '懙': '效', '懚': '被', '懛': '预', '懜': '有', '懝': '害', '懞': '防',
-        '懠': '学', '懡': '中', '懢': '杀', '懤': '是', '懥': '国', '懧': '给',
-        '懩': '尾', '懪': '己', '懫': '对', '懬': '来', '懭': '路', '穤': '谋',
-    }
     # 字形比对基准字体：思源黑体 CN Normal（cxsecret 源字体即它改的 cmap）
     CXSECRET_BASE_FONT = os.path.join(BASE_DIR, 'fonts', 'SourceHanSansCN-Normal.otf')
     CXSECRET_BASE_FONT_URL = ('https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@release/'
                               'SubsetOTF/CN/SourceHanSansCN-Normal.otf')
-    # 密文映射全局缓存文件（与脚本同目录）：{"密字": "真字", ...}，全部字体共用一张表
+    # 密文映射缓存文件（与脚本同目录）：{"v": 算法版本, "fonts": {"字体md5": {密字: 真字}}}
     CXSECRET_CACHE = os.path.join(BASE_DIR, 'cxsecret_map.json')
     # 缓存格式/算法版本：v4 = 按字体隔离 + 等比归一化 + 同分辨率精排 + 常用度裁决。
     # 版本号不匹配的旧缓存直接废弃重建（v1 拉伸归一化把「一」误配成「丨」；
@@ -1088,15 +1082,12 @@ class ChaoXing:
                 mapping[chr(code)] = chr(int(bcodes[best_i]))
         return mapping
 
-    # 19、建立密文映射：全局一张 {密字: 真字} 表 + 字体免检名单，
-    # 缓存结构 {"table": {...}, "verified": ["字体md5摘要"...]}。字体池可能有几十个字体文件，
-    # 但实测各字体映射一致（服务端=固定密文表+轮换字体）；verified 里的字体直接用表、零比对，
-    # 新字体首次露面才全量校验一次：完全一致→进免检名单；发现新密字→并入表；冲突→警告走人工 CXSECRET_MAP 兜底
     # 19、建立密文映射：一张表对应一个字体，缓存按字体 md5 隔离，
-    # 结构 v3 = {"fonts": {"<md5前8位>": {密字: 真字}}}。
-    # 章节测验密字码位池巨大、跨字体基本不相交（旧全局表无害）；但考试卷是
-    # 「常用字置换」——同一码位在不同试卷置换成不同真字，全局合并表必然互相污染
-    # （安全教育→安全为育 全是它），必须按字体隔离；旧格式无法归属字体，废弃重建
+    # 结构 v4 = {"v": 4, "fonts": {"<md5前8位>": {密字: 真字}}}。
+    # 必须按字体隔离：实测 29 个字体之间有 191 个共用码位，且这 191 个在不同字体里
+    # 全部对应不同真字（怙→习/的、怟→是/生），合并成一张全局表必然互相污染
+    # （「安全教育」解成「安全为育」就是这么来的）。同一份测验的字体字节是稳定的
+    # （重做/多轮重试/隔天重跑都命中缓存），只有首次遇到新测验才付一次建表成本。
     def __build_secret_map(self, font_bytes):
         fonts = {}
         if os.path.exists(self.CXSECRET_CACHE):
@@ -1122,13 +1113,7 @@ class ChaoXing:
             print('🔤 自动识别 %d 字，已按字体缓存到 %s' % (len(table), self.CXSECRET_CACHE))
         elif fmd5:
             print('🔤 字体 %s 映射命中缓存（%d 字）' % (fmd5, len(table)))
-
-        # 人工核对表只作缺口补充（setdefault）：人工条目同样字体相关，
-        # 无条件覆盖当前字体的自动结果反而会引入错误
-        mapping = dict(table)
-        for k, v in self.CXSECRET_MAP.items():
-            mapping.setdefault(k, v)
-        return mapping
+        return table
 
     # 19.1、保存按字体隔离的密文映射缓存（带算法版本号）
     def __save_secret_cache(self, fonts):
