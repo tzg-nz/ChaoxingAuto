@@ -755,7 +755,7 @@ class ChaoXing:
     def __finish_one_video(self, attachment, defaults):
         title = self.__att_title(attachment)
         duration = int(attachment['attDuration'])
-        print('📺%s 开始观看 %s（真实时长等待）' % (title, self.__fmt_dur(duration)))
+        print('📺%s 开始观看 %s' % (title, self.__fmt_dur(duration)))
         status = self.__get_video_status(attachment['objectId'], defaults.get('fid') or self.fid)
         dtoken = status['dtoken']
         # 从服务端记录的播放位置续播（playTime 是毫秒）；已到片尾说明上次没判过，从头再来
