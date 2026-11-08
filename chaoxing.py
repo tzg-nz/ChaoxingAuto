@@ -1170,65 +1170,6 @@ class ChaoXing:
     # 23.0、答题模型与回退：LLM_MODELS 顺序即优先级（key 为空的项跳过）；
     # 某题首选失败就换下一个模型答这一题，下一题仍从首选开始（失败多为偶发）
 
-    # 22.9、载入标准答案 txt（utf-8/gbk 自适应）：内容会注入每道题提示词的最前面，
-    # 供大模型从中读取正确答案（答案与题目不一定一一对应）
-    def load_std_answer(self, path):
-        raw = open(path, 'rb').read()
-        text = None
-        for enc in ('utf-8-sig', 'utf-8', 'gbk'):
-            try:
-                text = raw.decode(enc)
-                break
-            except UnicodeDecodeError:
-                continue
-        if text is None:
-            raise ValueError('标准答案文件编码无法识别（试过 utf-8/gbk）：%s' % path)
-        self.std_answer_text = text.strip()
-        self.std_answer_blocks = self.__split_std_blocks(self.std_answer_text)
-        print('📄 已载入标准答案：%s（%d 字，%d 条）' % (
-            path, len(self.std_answer_text), len(self.std_answer_blocks)))
-        return self.std_answer_text
-
-    # 22.9.1、标答文本按条目切分：每条 = 题干行(可多行) + 我的/正确答案行。
-    # 以「我的答案/正确答案」行作为条目收尾标志
-    @staticmethod
-    def __split_std_blocks(text):
-        blocks, cur = [], []
-        for line in (text or '').splitlines():
-            s = line.strip()
-            if not s:
-                continue
-            if ('我的答案' in s or '正确答案' in s) and cur:
-                cur.append(s)
-                blocks.append('\n'.join(cur))
-                cur = []
-            else:
-                cur.append(s)
-        if cur:
-            blocks.append('\n'.join(cur))
-        return blocks
-
-    # 22.9.2、题干与标答条目模糊匹配：去掉题号/标记/标点后按字符二元组算 Dice，
-    # 返回最相关的前 topk 条（阈值 0.3，低于视为没有对应标答）
-    def _match_std_blocks(self, stem, topk=3, threshold=0.3):
-        def norm(s):
-            return re.sub(r'我的答案|正确答案|\(\d+\)|（\d+）|[^\u4e00-\u9fffA-Za-z0-9]', '', s)
-        a = norm(stem)
-        if len(a) < 4:
-            return []
-        ga = {a[i:i + 2] for i in range(len(a) - 1)}
-        scored = []
-        for blk in getattr(self, 'std_answer_blocks', []) or []:
-            b = norm(blk)
-            if len(b) < 4:
-                continue
-            gb = {b[i:i + 2] for i in range(len(b) - 1)}
-            v = 2.0 * len(ga & gb) / (len(ga) + len(gb))
-            if v >= threshold:
-                scored.append((v, blk))
-        scored.sort(key=lambda t: -t[0])
-        return [blk for _v, blk in scored[:topk]]
-
     # 23、大模型答题：题面 prompt（题目+选项+历次错误答案）→ 回复 → 解析出选项 data 列表
     # 判断题统一用 A=对 B=错 喂给模型（true/false 当字母模型回答不稳定），解析后再映射回去；
     # 多选时附加题型说明；填空题（作业）答案放 ## 里，解析时从 ## 之间取
@@ -1241,16 +1182,7 @@ class ChaoXing:
             print('   ⚠️ 选项未识别出有效 data，本题留空')
             return [], ''
         is_judge = any(d in ('true', 'false') for d, _ in options)
-        # 标准答案：题干与标答条目本地模糊匹配，只把匹配到的条目注入提示词
-        # （整份标答 5 万多字逐题全量注入，免费档模型慢到不可用）
-        std_blocks = self._match_std_blocks(stem)
-        lines = []
-        if std_blocks:
-            lines.append('（%s）' % '\n'.join(std_blocks))
-            lines.append('以上括号内的内容是标准答案，你需要从中读取正确答案，'
-                         '答案可能不是一一对应的，可能选择题的答案填空题里面有，'
-                         '如果没有则自行理解')
-        lines.append(stem)
+        lines = [stem]
         for d, t in options:
             if is_judge:
                 d = 'A' if d == 'true' else 'B'
@@ -1258,18 +1190,17 @@ class ChaoXing:
         for w in wrong_answers or []:
             w_show = ' '.join({'true': 'A', 'false': 'B'}.get(x, x) for x in w.split())
             lines.append('答案 %s 不是正确的答案' % w_show)
-        theme = ('本题目主题是%s，请基于这个主题给我这道题正确选项的答案%s，'
+        theme = ('本题目主题是%s，请基于这个主题给我这道题正确选项的答案，'
                  '如果遇到有争议的题目先排查错误选项再仔细思考选择正确的答案，'
                  '若涉及政治方面问题需要联网搜索寻找权威答案不要瞎猜')
-        std_hint = '（如果有标准答案优先参考标准答案）' if std_blocks else ''
         if is_fill:
             # 填空题：答案放 ## 里（固定格式），解析时从 ## 之间取；两个注合并为一个
             lines.append('注：本题为填空题！！！仅返回答案，请把答案放进##中，不需要讲解')
-            lines.append(theme % (getattr(self, 'course_name', ''), std_hint))
+            lines.append(theme % getattr(self, 'course_name', ''))
             lines.append('格式：##你的答案##；若有多个空，按题目顺序每个空的答案'
                          '分别用##包裹，一空一对##')
         else:
-            lines.append(theme % (getattr(self, 'course_name', ''), std_hint))
+            lines.append(theme % getattr(self, 'course_name', ''))
             lines.append('注：仅返回英文字母选项即可，不需要讲解')
         if not is_fill and (str(qtype) == '1' or '多选' in (type_name or '')):
             lines.append('注：本题为多选题！！！')  # 单选/判断/填空不干扰模型
@@ -1278,9 +1209,8 @@ class ChaoXing:
             print('   🤖 提示词：')
             print(prompt)
         # 逐模型尝试：首选连续 3 次失败就换下一个模型重试本题——只影响本题，
-        # 下一题仍从首选开始（失败多为偶发超时，不把整场连坐降级）。
-        # 带标答匹配块的提示词较长，超时放宽到 120 秒；普通题 60 秒
-        timeout = 120 if std_blocks else 60
+        # 下一题仍从首选开始（失败多为偶发超时，不把整场连坐降级）
+        timeout = 60
         reply = None
         for entry in type(self).LLM_MODELS:
             model = entry['model']
@@ -1359,7 +1289,7 @@ class ChaoXing:
     # 23.0.1、从模型回复里取 ## 包裹的填空答案（一空一个，按空序）。
     # 回复以 ## 开头：答案段是切分后的 parts[1:]——兼容漏掉收尾 ## 的「##100」
     # 和多空连写「##a##b##」；否则取两两 ## 之间的奇数段（前后带说明文字也不误收）。
-    # 纯标点段丢弃
+    # 纯标点段与带 <> 的标记残片（模型思考过程的 </think> 之类）丢弃，重复答案去重
     @staticmethod
     def __extract_fill_answers(reply):
         reply = (reply or '').strip()
@@ -1368,7 +1298,11 @@ class ChaoXing:
         out = []
         for p in cand:
             p = p.strip()
-            if p and re.sub(r'[\W_]+', '', p, flags=re.UNICODE):
+            if not p or '<' in p or '>' in p:
+                continue
+            if not re.sub(r'[\W_]+', '', p, flags=re.UNICODE):
+                continue
+            if p not in out:
                 out.append(p)
         return out[:20]
 
@@ -1592,9 +1526,12 @@ class ChaoXing:
                 d = 'A' if d == 'true' else 'B'
             lines.append('%s. %s' % (d, text))
         if not q['options']:
-            # 简答/填空类题型 与 选项解析异常的客观题 文案区分开，与答案行的提示一致
-            lines.append('（简答题，不作答，留空待老师批阅）' if q['qtype'] == '4'
-                         else '（选项未识别，不作答，留空待批阅）')
+            if q.get('blanks'):
+                pass  # 填空题：题干里的 ____ 即空位，无选项行
+            elif q.get('qtype', '') == '4':
+                lines.append('（简答题，不作答，留空待老师批阅）')
+            else:
+                lines.append('（选项未识别，不作答，留空待批阅）')
         return lines
 
     @staticmethod
@@ -2448,16 +2385,18 @@ class ChaoXing:
             stem_el = div.select_one('h3.mark_name')
             stem = stem_el.get_text(' ', strip=True) if stem_el is not None else ''
             q = {'qid': qid, 'wtype': wtype, 'typename': typename, 'stem': stem,
-                 'options': [], 'blanks': 0}
+                 'options': [], 'datamap': {}, 'blanks': 0}
             if wtype in ('0', '1', '3'):
                 for i, box in enumerate(div.select(
                         '[onclick*="addChoice"], [onclick*="addMultipleChoice"]')):
                     span = box.select_one('span[data]')
                     text_el = box.select_one('.answer_p')
-                    q['options'].append({
-                        'display': chr(65 + i),
-                        'data': (span.get('data') if span is not None else '') or '',
-                        'text': text_el.get_text(' ', strip=True) if text_el is not None else ''})
+                    # 显示字母 A/B/C 顺排（页面显示序），data 值是乱序对应的真选项标号
+                    dl = chr(65 + i)
+                    q['options'].append((
+                        dl,
+                        text_el.get_text(' ', strip=True) if text_el is not None else ''))
+                    q['datamap'][dl] = (span.get('data') if span is not None else '') or ''
             elif wtype == '2':
                 sz = div.select_one('input[name^="tiankongsize"]')
                 try:
@@ -2487,41 +2426,47 @@ class ChaoXing:
                 wmap = self.__build_secret_map(font)
                 for q in page['questions']:
                     q['stem'] = self.__decode_cxsecret(q['stem'], wmap)
-                    for o in q['options']:
-                        o['text'] = self.__decode_cxsecret(o['text'], wmap)
+                    q['options'] = [(d, self.__decode_cxsecret(t, wmap))
+                                    for d, t in q['options']]
         print('   📄 共 %d 题' % len(page['questions']))
         extra = {}
         for q in page['questions']:
-            print(q['stem'])
+            self.__print_question(q)
             if q['wtype'] in ('0', '1', '3'):
-                picked, _p = self.__ask_llm(
-                    q['stem'], [(o['data'], o['text']) for o in q['options']],
-                    qtype=q['wtype'], type_name=q['typename'])
+                picked, _p = self.__ask_llm(q['stem'], q['options'],
+                                            qtype=q['wtype'], type_name=q['typename'])
                 if not picked:
                     # 与测验一致：模型未识别时按题型保底（单选A/多选全选/判断A）
                     picked = self.__fallback_answer(q['options'], q['wtype'],
                                                     q['typename'])
                     if picked:
                         print('   🔒 模型未识别，按题型保底作答')
-                # 与页面 addChoice 一致：按 DOM 顺序拼接所选 data 值
-                val = ''.join(o['data'] for o in q['options'] if o['data'] in picked)
+                # 提交值：显示字母映射回 data，按显示序（=页面 DOM 序）拼接，
+                # 与页面 addChoice 的拼接行为一致
+                val = ''.join(q['datamap'][dl] for dl in sorted(picked)
+                              if dl in q['datamap'])
                 extra['answer' + q['qid']] = val
                 print('   答案：%s' % self.__fmt_answer(picked))
             elif q['wtype'] == '2':
                 ans, _p = self.__ask_llm(q['stem'], [], qtype=q['wtype'],
                                          type_name=q['typename'])
-                for j in range(1, q['blanks'] + 1):
-                    a = ans[j - 1] if j - 1 < len(ans) else ''
+                # 一空一对：模型偶尔会在思考过程里多包一对 ##，每空只取第一个
+                per_blank = [ans[j] if j < len(ans) else '' for j in range(q['blanks'])]
+                for j, a in enumerate(per_blank, 1):
                     extra['answerEditor%d%d' % (int(q['qid']), j)] = '<p>%s</p>' % a
-                print('   答案：%s' % self.__fmt_answer(ans))
+                print('   答案：%s' % self.__fmt_answer(per_blank))
             else:
-                print('   答案：（%s 暂不支持，留空）' % (q['typename'] or q['wtype']))
+                print('   答案：（暂不支持，留空）')
         data = dict(page['fields'])
         data.update(extra)
         data['pyFlag'] = '1'
+        # 题目 ID 串：页面隐藏域 id=questionIds、name=answerwqbid，服务端按它核对作答
+        # （缺了会报「无效的参数：code-1」——浏览器实测确认）
         if page['qids']:
-            data['questionIds'] = page['qids']
-        url = page['action'] + '&pyFlag=1&ua=pc&formType=post&saveStatus=1&version=1'
+            data['answerwqbid'] = page['qids']
+        # 表单 action 是相对路径（/mooc-ans/work/addStudentWorkNewWeb?...），必须拼主机名
+        url = urljoin('https://mooc1.chaoxing.com', page['action']) + \
+            '&pyFlag=1&ua=pc&formType=post&saveStatus=1&version=1'
         r2 = self.__risky_req('POST', url, data=data, headers={
             'Referer': r.url,
             'X-Requested-With': 'XMLHttpRequest',
@@ -2569,21 +2514,20 @@ class ChaoXing:
 
     # 28.4、跑全部未交作业（mode=homework 或 all 模式尾部调用；submit=True 提交）
     def __run_homeworks(self, submit=False):
-        print('\n📋 拉取作业列表...')
         html = self.__get_work_list_html()
         if not html:
             return
         works = self.__parse_work_list(html)
         pending = [w for w in works if '未交' in w['status']]
-        print('🎯 代做清单：作业 %d 份，未交 %d 份' % (len(works), len(pending)))
+        print('📋 代做清单：作业 %d 份' % len(pending))
         for w in pending:
-            print('   🎯 %s' % w['name'])
+            print('   %s' % w['name'])
         if not pending:
             print('📋 没有未交的作业')
             return
         for w in pending:
-            print('\nhomework [%s] 开始作答（%s）' % (
-                w['name'], '作答并提交' if submit else '只暂存不提交'))
+            print('📝%s 开始作答（%s）' % (
+                w['name'], '作答并提交' if submit else '暂存不提交'))
             try:
                 self.__do_work(w, submit=submit)
             except Exception as e:
@@ -2606,15 +2550,12 @@ class ChaoXing:
     @classmethod
     def main(cls, username, password, index, chapter_id=None, mode='all', exam_id=None,
              show_prompt=False, save_log=False, no_submit=False, full_score=False,
-             std_answer=None):
+             work_submit=False):
         user = cls(username, password)
         user.login()
         user.get_course_list()
         response = user.get_course(index - 1)
         user.get_capter_list(response)
-        # 标准答案 txt：载入后注入每道题提示词最前面（供大模型从中读正确答案）
-        if std_answer:
-            user.load_std_answer(std_answer)
         # show_prompt=True 时每题打印发给 LLM 的完整提示词（测验/考试共用 __ask_llm）
         user.show_prompt = show_prompt
         # save_log=True 时考试题目存日志（不满分才写入，提示词跟随 show_prompt）
@@ -2624,7 +2565,7 @@ class ChaoXing:
         # exam_id 传了即视为考试模式：mode 忘写 'exam' 时旧逻辑会静默忽略 exam_id，
         # 整门课刷完还把待做考试全做一遍——与「只考这一场」的意图正好相反
         if mode == 'homework':
-            user.__run_homeworks()
+            user.__run_homeworks(submit=work_submit)
             return
         if mode == 'exam' or exam_id:
             if exam_id:

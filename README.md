@@ -56,7 +56,6 @@ pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow opencv-p
 ```
 
 - 字形比对基准字体（思源黑体 CN Normal）：已随仓库分发（`fonts/` 目录），克隆即用，无需联网下载
-- 标准答案（可选）：`main(..., std_answer='标答.txt')` 传入 txt 路径，内容会注入每道题提示词最前面（括号包裹），大模型优先从中读取正确答案；答案与题目不要求一一对应
 - `错题报告/`：满分模式失败的错题报告输出目录，自动创建
 - `考试答题日志/`：考试答题日志输出目录，自动创建
 
