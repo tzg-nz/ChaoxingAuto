@@ -2514,22 +2514,23 @@ class ChaoXing:
         print('   ❌ 提交失败: %s' % (resp3.get('msg') or r3.text[:120]))
         return False
 
-    # 28.45、作业代做清单：拉列表、打印未交作业，返回未交列表
-    # （main 概览与 __run_homeworks 共用）
-    def __print_work_list(self):
+    # 28.45、作业清单：拉列表、打印未交作业，返回未交列表
+    # （main 概览与 __run_homeworks 共用；show=False 只拉取不打印）
+    def __print_work_list(self, show=True):
         html = self.__get_work_list_html()
         if not html:
             return []
         works = self.__parse_work_list(html)
         pending = [w for w in works if '未交' in w['status']]
-        print('📋 作业清单')
-        for w in pending:
-            print('   %s' % w['name'])
+        if show:
+            print('📋 作业清单')
+            for w in pending:
+                print('   %s' % w['name'])
         return pending
 
     # 28.4、跑全部未交作业（mode=homework 或 all 模式尾部调用；默认作答后提交）
-    def __run_homeworks(self, submit=True):
-        pending = self.__print_work_list()
+    def __run_homeworks(self, submit=True, show_list=False):
+        pending = self.__print_work_list(show=show_list)
         if not pending:
             return
         for w in pending:
@@ -2572,7 +2573,7 @@ class ChaoXing:
         # exam_id 传了即视为考试模式：mode 忘写 'exam' 时旧逻辑会静默忽略 exam_id，
         # 整门课刷完还把待做考试全做一遍——与「只考这一场」的意图正好相反
         if mode == 'homework':
-            user.__run_homeworks(submit=work_submit)
+            user.__run_homeworks(submit=work_submit, show_list=True)
             return
         if mode == 'exam' or exam_id:
             if exam_id:
@@ -2608,8 +2609,8 @@ class ChaoXing:
                 continue
             targets.append((task_id, name))
         print(user.__progress_bar(user.pts_done, user.pts_all))
-        user.__print_exam_list()
         user.__print_work_list()
+        user.__print_exam_list()
         print('开始刷剩余%d章...' % len(targets))
 
         for task_id, name in targets:
