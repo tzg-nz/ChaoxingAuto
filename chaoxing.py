@@ -2608,7 +2608,6 @@ class ChaoXing:
                 continue
             targets.append((task_id, name))
         print(user.__progress_bar(user.pts_done, user.pts_all))
-        user.__print_work_list()
         user.__print_exam_list()
         if targets:
             print('开始刷剩余%d章...' % len(targets))
