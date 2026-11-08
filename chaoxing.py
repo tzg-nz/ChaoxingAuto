@@ -57,11 +57,18 @@ class ChaoXing:
     # 9010 风控验证码识别引擎（懒加载，进程内复用）
     __ocr = None
 
-    # Agnes AI（答题用），OpenAI 兼容接口
-    LLM_API_URL = 'https://apihub.agnes-ai.com/v1/chat/completions'
-    LLM_API_KEY = 'sk-kvOgUeRuTbuX4dkjG7Whe1s5gUCQ6hwx7Vx6AxPjXvQoyizZ'
-    # 答题模型：优先 3.0（官网免费），连续 3 次请求失败自动降级到下一个
-    LLM_MODELS = ['agnes-3.0-flash', 'agnes-2.5-flash']
+    # 答题模型链（按优先级，连续 3 次请求失败自动降级到下一个）。
+    # 每项：model 调用名 / url OpenAI 兼容接口 / key 密钥；key 留空的项自动跳过。
+    # 全部走免费档：硅基流动 Xing4.0-29B（¥0，免费名单会换代，以官方价格页为准）
+    # 优先，Agnes 3.0 兜底（免费但账号偶发风控 403）
+    LLM_MODELS = [
+        {'model': 'XingChenAGI/Xing4.0-29B',
+         'url': 'https://api.siliconflow.cn/v1/chat/completions',
+         'key': 'sk-umvyxirabusphyjgbuvadwzxvbwznrtzrwzrsylqlcybulfe'},
+        {'model': 'agnes-3.0-flash',
+         'url': 'https://apihub.agnes-ai.com/v1/chat/completions',
+         'key': ''},
+    ]
     __llm_idx = 0
     # 测验最多作答轮数：每轮提交后判分，错的题带上历次错误答案重新问，直到全对
     QUIZ_MAX_ROUNDS = 3
@@ -1200,17 +1207,8 @@ class ChaoXing:
             })
         return questions
 
-    # 23.0、当前答题模型与降级：LLM_MODELS 顺序即优先级，请求连续失败就往后退一格
-    @classmethod
-    def _llm_model(cls):
-        return cls.LLM_MODELS[min(cls.__llm_idx, len(cls.LLM_MODELS) - 1)]
-
-    @classmethod
-    def _demote_llm(cls, why):
-        if cls.__llm_idx < len(cls.LLM_MODELS) - 1:
-            cls.__llm_idx += 1
-            print('🔽 模型 %s %s，后续改用 %s'
-                  % (cls.LLM_MODELS[cls.__llm_idx - 1], why, cls.LLM_MODELS[cls.__llm_idx]))
+    # 23.0、答题模型与回退：LLM_MODELS 顺序即优先级（key 为空的项跳过）；
+    # 某题首选失败就换下一个模型答这一题，下一题仍从首选开始（失败多为偶发）
 
     # 23、大模型答题：题面 prompt（题目+选项+历次错误答案）→ 回复 → 解析出选项 data 列表
     # 判断题统一用 A=对 B=错 喂给模型（true/false 当字母模型回答不稳定），解析后再映射回去；
@@ -1240,55 +1238,58 @@ class ChaoXing:
             lines.append('注：本题为填空题！！！')
             lines.append(theme % getattr(self, 'course_name', ''))
             lines.append('注：仅返回答案，请把答案放进##中，不需要讲解')
-            lines.append('若有多个空，按题目顺序每个空的答案分别用##包裹，一空一对##')
+            lines.append('格式：##你的答案##；若有多个空，按题目顺序每个空的答案'
+                         '分别用##包裹，一空一对##')
         else:
             lines.append(theme % getattr(self, 'course_name', ''))
             lines.append('注：仅返回英文字母选项即可，不需要讲解')
         if not is_fill and (str(qtype) == '1' or '多选' in (type_name or '')):
             lines.append('注：本题为多选题！！！')  # 单选/判断/填空不干扰模型
         prompt = '\n'.join(lines)
-        model = self._llm_model()
-        print('   🤖 当前模型: %s' % model)
         if getattr(self, 'show_prompt', False):
             print('   🤖 提示词：')
             print(prompt)
-        payload = {
-            'model': model,
-            'temperature': 0.1,
-            'messages': [{'role': 'user', 'content': '\n'.join(lines)}],
-        }
-        headers = {'Authorization': 'Bearer %s' % self.LLM_API_KEY}
-        # 超时/网络异常/HTTP 错误/空回复统一重试，最多 3 次，都失败返回空答案（本题本轮不选，下轮再试）
-        r = None
-        for attempt in range(3):
-            try:
-                r = requests.post(self.LLM_API_URL, json=payload, headers=headers, timeout=120)
-            except requests.RequestException as e:
-                r = None
-                print('   ⚠️ 模型请求异常 %s（第 %d/3 次）' % (type(e).__name__, attempt + 1))
-            else:
-                if r.status_code == 200:
-                    break
-                print('   ⚠️ 模型 HTTP %s（第 %d/3 次）' % (r.status_code, attempt + 1))
-                r = None
-            if attempt < 2:
-                time.sleep(3 * (attempt + 1))
-        if r is None:
-            self._demote_llm('连续 3 次请求失败')
-            print('   ❌ 模型 3 次均失败，本题本轮跳过，下一轮再试')
-            return [], prompt
-        try:
-            reply = r.json()['choices'][0]['message']['content'].strip()
-        except (ValueError, KeyError, IndexError):
-            print('   ❌ 模型响应格式异常，本题本轮跳过')
-            return [], prompt
-        if not reply:
-            print('   ❌ 模型返回空内容，本题本轮跳过')
+        # 逐模型尝试：首选连续 3 次失败就换下一个模型重试本题——只影响本题，
+        # 下一题仍从首选开始（失败多为偶发超时，不把整场连坐降级）
+        reply = None
+        for entry in type(self).LLM_MODELS:
+            model = entry['model']
+            if not entry.get('key'):
+                print('   ⚠️ 模型 %s 缺少API密钥，跳过' % model)
+                continue
+            print('   🤖 当前模型: %s' % model)
+            payload = {'model': model, 'temperature': 0.1,
+                       'messages': [{'role': 'user', 'content': '\n'.join(lines)}]}
+            headers = {'Authorization': 'Bearer %s' % entry['key']}
+            r = None
+            for attempt in range(3):
+                try:
+                    r = requests.post(entry['url'], json=payload, headers=headers, timeout=60)
+                except requests.RequestException as e:
+                    r = None
+                    print('   ⚠️ 模型请求异常 %s（第 %d/3 次）' % (type(e).__name__, attempt + 1))
+                else:
+                    if r.status_code == 200:
+                        break
+                    print('   ⚠️ 模型 HTTP %s（第 %d/3 次）' % (r.status_code, attempt + 1))
+                    r = None
+                if attempt < 2:
+                    time.sleep(3 * (attempt + 1))
+            if r is not None:
+                try:
+                    reply = r.json()['choices'][0]['message']['content'].strip()
+                except (ValueError, KeyError, IndexError):
+                    print('   ❌ 模型响应格式异常')
+                    reply = None
+            if reply:
+                break
+            print('   ⚠️ 模型 %s 3 次均失败' % model)
+        if reply is None:
+            print('   ❌ 全部模型均失败，本题本轮跳过，下一轮再试')
             return [], prompt
         print('   💬 %s' % reply.replace('\n', ' '))
         if is_fill:
-            # 填空题固定格式：答案放 ## 里，一空一对，按空序返回
-            ans = re.findall(r'##\s*([^#\n]{1,300}?)\s*##', reply)
+            ans = self.__extract_fill_answers(reply)
             if not ans:
                 print('   ⚠️ 回复里没有 ## 包裹的答案，本题留空')
             return ans, prompt
@@ -1324,6 +1325,22 @@ class ChaoXing:
             groups = re.findall(r'[%s]+' % L, up)
             picked = list(max(groups, key=len)) if groups else []
         return [d for d in [x for x, _ in options] if d in picked], prompt
+
+    # 23.0.1、从模型回复里取 ## 包裹的填空答案（一空一个，按空序）。
+    # 回复以 ## 开头：答案段是切分后的 parts[1:]——兼容漏掉收尾 ## 的「##100」
+    # 和多空连写「##a##b##」；否则取两两 ## 之间的奇数段（前后带说明文字也不误收）。
+    # 纯标点段丢弃
+    @staticmethod
+    def __extract_fill_answers(reply):
+        reply = (reply or '').strip()
+        parts = reply.split('##')
+        cand = parts[1:] if reply.startswith('##') else parts[1::2]
+        out = []
+        for p in cand:
+            p = p.strip()
+            if p and re.sub(r'[\W_]+', '', p, flags=re.UNICODE):
+                out.append(p)
+        return out[:20]
 
     # 23.1、模型未识别出答案时的题型保底：单选→第一个选项(A)、多选→全选、判断→A(对)。
     # 保底为了不交白卷：空白必 0 分，多选全选命中率远高于空白；full_score 模式下
@@ -2443,7 +2460,7 @@ class ChaoXing:
         print('   📄 共 %d 题' % len(page['questions']))
         extra = {}
         for q in page['questions']:
-            tag = '%s(%s)' % (q['stem'][:36], q['typename'] or q['wtype'])
+            print(q['stem'])
             if q['wtype'] in ('0', '1', '3'):
                 picked, _p = self.__ask_llm(
                     q['stem'], [(o['data'], o['text']) for o in q['options']],
@@ -2451,16 +2468,16 @@ class ChaoXing:
                 # 与页面 addChoice 一致：按 DOM 顺序拼接所选 data 值
                 val = ''.join(o['data'] for o in q['options'] if o['data'] in picked)
                 extra['answer' + q['qid']] = val
-                print('   ✏️ %s -> %s' % (tag, val or '（未识别，留空）'))
+                print('   答案：%s' % self.__fmt_answer(picked))
             elif q['wtype'] == '2':
                 ans, _p = self.__ask_llm(q['stem'], [], qtype=q['wtype'],
                                          type_name=q['typename'])
                 for j in range(1, q['blanks'] + 1):
                     a = ans[j - 1] if j - 1 < len(ans) else ''
                     extra['answerEditor%d%d' % (int(q['qid']), j)] = '<p>%s</p>' % a
-                print('   ✏️ %s -> %s' % (tag, ' / '.join(ans) if ans else '（未识别，留空）'))
+                print('   答案：%s' % self.__fmt_answer(ans))
             else:
-                print('   ⏭️ %s 暂不支持，留空' % tag)
+                print('   答案：（%s 暂不支持，留空）' % (q['typename'] or q['wtype']))
         data = dict(page['fields'])
         data.update(extra)
         data['pyFlag'] = '1'
