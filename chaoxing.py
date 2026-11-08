@@ -2461,14 +2461,17 @@ class ChaoXing:
                 print('   答案：（暂不支持，留空）')
         data = dict(page['fields'])
         data.update(extra)
-        data['pyFlag'] = '1'
+        # 暂存与提交是同一个 POST，仅 pyFlag 不同（1=暂存，空=提交，与页面按钮一致）；
+        # 提交时直接以提交形态发一次，不再先暂存再提交
+        pyflag = '' if submit else '1'
+        data['pyFlag'] = pyflag
         # 题目 ID 串：页面隐藏域 id=questionIds、name=answerwqbid，服务端按它核对作答
         # （缺了会报「无效的参数：code-1」——浏览器实测确认）
         if page['qids']:
             data['answerwqbid'] = page['qids']
         # 表单 action 是相对路径（/mooc-ans/work/addStudentWorkNewWeb?...），必须拼主机名
         url = urljoin('https://mooc1.chaoxing.com', page['action']) + \
-            '&pyFlag=1&ua=pc&formType=post&saveStatus=1&version=1'
+            '&pyFlag=%s&ua=pc&formType=post&saveStatus=1&version=1' % pyflag
         r2 = self.__risky_req('POST', url, data=data, headers={
             'Referer': r.url,
             'X-Requested-With': 'XMLHttpRequest',
@@ -2478,41 +2481,14 @@ class ChaoXing:
         except ValueError:
             resp = {'status': False, 'msg': r2.text[:120]}
         if not resp.get('status'):
-            print('   ❌ 暂存失败: %s' % (resp.get('msg') or r2.text[:120]))
+            print('   ❌ %s失败: %s' % ('提交' if submit else '暂存',
+                                       resp.get('msg') or r2.text[:120]))
             return False
-        if not submit:
+        if submit:
+            print('   📮 作业已提交')
+        else:
             print('   💾 已暂存（不提交）')
-            return True
-        # 提交：validate 预检（1=账号异常，2/3=需页面验证码）通过后，重发 pyFlag
-        # 为空的同一表单；saveStatus 恒为 1，服务端以 pyFlag 区分暂存/提交
-        vr = self.__risky_req('GET', 'https://mooc1.chaoxing.com/work/validate'
-                              '?courseId=%s&classId=%s&cpi=%s'
-                              % (self.courseid, self.clazzid, self.cpi),
-                              headers={'Referer': r.url})
-        try:
-            vs = vr.json().get('status')
-        except ValueError:
-            vs = 0
-        if vs == 1:
-            print('   ❌ 提交预检：账号异常，需重新登录')
-            return False
-        if vs in (2, 3):
-            print('   ❌ 提交需要页面验证码，本次保留在暂存状态')
-            return False
-        data['pyFlag'] = ''
-        r3 = self.__risky_req('POST', url, data=data, headers={
-            'Referer': r.url,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'})
-        try:
-            resp3 = r3.json()
-        except ValueError:
-            resp3 = {'status': False, 'msg': r3.text[:120]}
-        if resp3.get('status'):
-            print('   📮 已提交')
-            return True
-        print('   ❌ 提交失败: %s' % (resp3.get('msg') or r3.text[:120]))
-        return False
+        return True
 
     # 28.45、作业清单：拉列表、打印未交作业，返回未交列表
     # （main 概览与 __run_homeworks 共用；show=False 只拉取不打印）
