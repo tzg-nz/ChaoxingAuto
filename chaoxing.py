@@ -2291,6 +2291,8 @@ class ChaoXing:
         todo = []
         for ex in exams:
             st = ex['status']
+            if '未开始' in st:
+                continue  # 未开始的考试不进入
             if '完成' not in st and '批阅' not in st:
                 todo.append(ex)  # 未做：直接做
                 continue
@@ -2512,18 +2514,23 @@ class ChaoXing:
         print('   ❌ 提交失败: %s' % (resp3.get('msg') or r3.text[:120]))
         return False
 
-    # 28.4、跑全部未交作业（mode=homework 或 all 模式尾部调用；submit=True 提交）
-    def __run_homeworks(self, submit=False):
+    # 28.45、作业代做清单：拉列表、打印未交作业，返回未交列表
+    # （main 概览与 __run_homeworks 共用）
+    def __print_work_list(self):
         html = self.__get_work_list_html()
         if not html:
-            return
+            return []
         works = self.__parse_work_list(html)
         pending = [w for w in works if '未交' in w['status']]
         print('📋 代做清单：作业 %d 份' % len(pending))
         for w in pending:
             print('   %s' % w['name'])
+        return pending
+
+    # 28.4、跑全部未交作业（mode=homework 或 all 模式尾部调用；默认作答后提交）
+    def __run_homeworks(self, submit=True):
+        pending = self.__print_work_list()
         if not pending:
-            print('📋 没有未交的作业')
             return
         for w in pending:
             print('📝%s 开始作答（%s）' % (
@@ -2550,7 +2557,7 @@ class ChaoXing:
     @classmethod
     def main(cls, username, password, index, chapter_id=None, mode='all', exam_id=None,
              show_prompt=False, save_log=False, no_submit=False, full_score=False,
-             work_submit=False):
+             work_submit=True):
         user = cls(username, password)
         user.login()
         user.get_course_list()
@@ -2602,6 +2609,7 @@ class ChaoXing:
             targets.append((task_id, name))
         print(user.__progress_bar(user.pts_done, user.pts_all))
         user.__print_exam_list()
+        user.__print_work_list()
         print('开始刷剩余%d章...' % len(targets))
 
         for task_id, name in targets:
