@@ -56,7 +56,7 @@ pip install requests pycryptodome beautifulsoup4 numpy fonttools pillow opencv-p
 ```
 
 - 字形比对基准字体（思源黑体 CN Normal）：已随仓库分发（`fonts/` 目录），克隆即用，无需联网下载
-- `cxsecret_map.json`：字体映射缓存（按字体 md5 隔离，考试卷同码位在不同卷真字不同，不能合并），首次运行自动生成
+- 标准答案（可选）：`main(..., std_answer='标答.txt')` 传入 txt 路径，内容会注入每道题提示词最前面（括号包裹），大模型优先从中读取正确答案；答案与题目不要求一一对应
 - `错题报告/`：满分模式失败的错题报告输出目录，自动创建
 - `考试答题日志/`：考试答题日志输出目录，自动创建
 
@@ -167,16 +167,11 @@ ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 超星/
 ├── chaoxing.py          # 主脚本
 ├── slider_gap.py        # 滑块缺口识别（内置，考试/风控滑块共用）
-├── test_decode.py       # 字体解密准确性自检（--offline 离线 / 带账号在线端到端）
-├── tests/               # 自检样本：真实密文字体 + 密文题干 + 批阅页明文真值 + 期望映射
 ├── fonts/               # 字形比对基准字体（思源黑体 CN Normal）
 ├── img/                 # README 示例图
-├── cxsecret_map.json    # 字体映射缓存（按字体隔离，运行时生成）
 ├── 错题报告/            # 满分模式失败的错题报告（运行时生成）
 └── 考试答题日志/        # 考试答题日志（运行时生成）
 ```
-
-**字体解密自检**：怀疑题目文字解错时跑 `python test_decode.py --offline`（不联网不要账号：①用仓库自带的真实密文字体做字形匹配回归 ②把样本密文题干解码后与批阅页明文真值逐字对照）；要验证真实题面跑 `python test_decode.py 账号 密码 [courseid] [chapterId]`（拿已批阅测验的明文当标准答案，重置后取加密题面逐题对照，**会把那份测验重置为未做**，不提交答案）。
 
 ## 免责声明
 

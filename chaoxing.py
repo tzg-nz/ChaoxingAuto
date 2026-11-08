@@ -47,13 +47,6 @@ class ChaoXing:
     CXSECRET_BASE_FONT = os.path.join(BASE_DIR, 'fonts', 'SourceHanSansCN-Normal.otf')
     CXSECRET_BASE_FONT_URL = ('https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@release/'
                               'SubsetOTF/CN/SourceHanSansCN-Normal.otf')
-    # 密文映射缓存文件（与脚本同目录）：{"v": 算法版本, "fonts": {"字体md5": {密字: 真字}}}
-    CXSECRET_CACHE = os.path.join(BASE_DIR, 'cxsecret_map.json')
-    # 缓存格式/算法版本：v4 = 按字体隔离 + 等比归一化 + 同分辨率精排 + 常用度裁决。
-    # 版本号不匹配的旧缓存直接废弃重建（v1 拉伸归一化把「一」误配成「丨」；
-    # v2 精排跨尺度比分且密字用低分辨率字体渲染，把「刺」误配成「剌」；
-    # v3 缺常用度裁决，把「对」误配成日文异体字「対」）
-    CXSECRET_CACHE_VERSION = 4
     # 9010 风控验证码识别引擎（懒加载，进程内复用）
     __ocr = None
 
@@ -1090,44 +1083,11 @@ class ChaoXing:
                 mapping[chr(code)] = chr(int(bcodes[best_i]))
         return mapping
 
-    # 19、建立密文映射：一张表对应一个字体，缓存按字体 md5 隔离，
-    # 结构 v4 = {"v": 4, "fonts": {"<md5前8位>": {密字: 真字}}}。
-    # 必须按字体隔离：实测 29 个字体之间有 191 个共用码位，且这 191 个在不同字体里
-    # 全部对应不同真字（怙→习/的、怟→是/生），合并成一张全局表必然互相污染
-    # （「安全教育」解成「安全为育」就是这么来的）。同一份测验的字体字节是稳定的
-    # （重做/多轮重试/隔天重跑都命中缓存），只有首次遇到新测验才付一次建表成本。
+    # 19、建立密文映射：题面内嵌字体每次拉取都是随机新生成的（同一份作业两次抓取
+    # 的字体 md5 都不同），按字体缓存永远命不中，直接对当前字体现场字形比对
     def __build_secret_map(self, font_bytes):
-        fonts = {}
-        if os.path.exists(self.CXSECRET_CACHE):
-            try:
-                with open(self.CXSECRET_CACHE, encoding='utf-8') as f:
-                    data = json.load(f)
-                if (isinstance(data, dict) and isinstance(data.get('fonts'), dict)
-                        and data.get('v') == self.CXSECRET_CACHE_VERSION):
-                    fonts = {k: v for k, v in data['fonts'].items() if isinstance(v, dict)}
-                elif data:
-                    print('🔤 旧缓存废弃（格式/算法版本不符，跨字体合并表会互相污染），按字体重建')
-            except (ValueError, OSError):
-                pass
-
-        fmd5 = hashlib.md5(font_bytes).hexdigest()[:8] if font_bytes else ''
-        table = dict(fonts.get(fmd5) or {})
-        if fmd5 and not table:
-            print('🔤 新字体 %s 自动字形比对建表（约 1 分钟）...' % fmd5)
-            table = self.__auto_match_secret(font_bytes, self.__ensure_base_font())
-            if table:
-                fonts[fmd5] = table
-                self.__save_secret_cache(fonts)
-            print('🔤 自动识别 %d 字，已按字体缓存到 %s' % (len(table), self.CXSECRET_CACHE))
-        elif fmd5:
-            print('🔤 字体 %s 映射命中缓存（%d 字）' % (fmd5, len(table)))
-        return table
-
-    # 19.1、保存按字体隔离的密文映射缓存（带算法版本号）
-    def __save_secret_cache(self, fonts):
-        with open(self.CXSECRET_CACHE, 'w', encoding='utf-8') as f:
-            json.dump({'v': self.CXSECRET_CACHE_VERSION, 'fonts': fonts},
-                      f, ensure_ascii=False, indent=1)
+        print('🔤 字形比对中（约 1 分钟）...')
+        return self.__auto_match_secret(font_bytes, self.__ensure_base_font())
 
     # 20、密文文本解码：映射表内的码位替换成真字，表外原样保留
     @staticmethod
@@ -1210,6 +1170,23 @@ class ChaoXing:
     # 23.0、答题模型与回退：LLM_MODELS 顺序即优先级（key 为空的项跳过）；
     # 某题首选失败就换下一个模型答这一题，下一题仍从首选开始（失败多为偶发）
 
+    # 22.9、载入标准答案 txt（utf-8/gbk 自适应）：内容会注入每道题提示词的最前面，
+    # 供大模型从中读取正确答案（答案与题目不一定一一对应）
+    def load_std_answer(self, path):
+        raw = open(path, 'rb').read()
+        text = None
+        for enc in ('utf-8-sig', 'utf-8', 'gbk'):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            raise ValueError('标准答案文件编码无法识别（试过 utf-8/gbk）：%s' % path)
+        self.std_answer_text = text.strip()
+        print('📄 已载入标准答案：%s（%d 字）' % (path, len(self.std_answer_text)))
+        return self.std_answer_text
+
     # 23、大模型答题：题面 prompt（题目+选项+历次错误答案）→ 回复 → 解析出选项 data 列表
     # 判断题统一用 A=对 B=错 喂给模型（true/false 当字母模型回答不稳定），解析后再映射回去；
     # 多选时附加题型说明；填空题（作业）答案放 ## 里，解析时从 ## 之间取
@@ -1222,7 +1199,15 @@ class ChaoXing:
             print('   ⚠️ 选项未识别出有效 data，本题留空')
             return [], ''
         is_judge = any(d in ('true', 'false') for d, _ in options)
-        lines = [stem]
+        lines = []
+        # 标准答案 txt（如果载入了）：放提示词最前面，括号包裹 + 说明
+        std = getattr(self, 'std_answer_text', '')
+        if std:
+            lines.append('（%s）' % std)
+            lines.append('以上括号内的内容是标准答案，你需要从中读取正确答案，'
+                         '答案可能不是一一对应的，可能选择题的答案填空题里面有，'
+                         '如果没有则自行理解')
+        lines.append(stem)
         for d, t in options:
             if is_judge:
                 d = 'A' if d == 'true' else 'B'
@@ -2535,12 +2520,16 @@ class ChaoXing:
     # 待完成章进入后才拉任务明细，输出清单并逐个执行
     @classmethod
     def main(cls, username, password, index, chapter_id=None, mode='all', exam_id=None,
-             show_prompt=False, save_log=False, no_submit=False, full_score=False):
+             show_prompt=False, save_log=False, no_submit=False, full_score=False,
+             std_answer=None):
         user = cls(username, password)
         user.login()
         user.get_course_list()
         response = user.get_course(index - 1)
         user.get_capter_list(response)
+        # 标准答案 txt：载入后注入每道题提示词最前面（供大模型从中读正确答案）
+        if std_answer:
+            user.load_std_answer(std_answer)
         # show_prompt=True 时每题打印发给 LLM 的完整提示词（测验/考试共用 __ask_llm）
         user.show_prompt = show_prompt
         # save_log=True 时考试题目存日志（不满分才写入，提示词跟随 show_prompt）
