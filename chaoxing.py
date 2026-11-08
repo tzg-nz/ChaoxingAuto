@@ -2522,7 +2522,7 @@ class ChaoXing:
             return []
         works = self.__parse_work_list(html)
         pending = [w for w in works if '未交' in w['status']]
-        print('📋 代做清单：作业 %d 份' % len(pending))
+        print('📋 作业清单')
         for w in pending:
             print('   %s' % w['name'])
         return pending
@@ -2662,10 +2662,10 @@ class ChaoXing:
                 # 权威值与本地实时计数有偏差（如服务端异步补录）才补一条进度条，一致则不重复输出
                 print(user.__progress_bar(user.pts_done, user.pts_all))
 
-        # 章节完处理考试 + 作业（all 模式全流程含考试与作业；course/watch/test 只管章节）
+        # 章节完处理作业 + 考试（all 模式全流程；course/watch/test 只管章节）
         if mode == 'all':
-            user.__run_pending_exams()
             user.__run_homeworks()
+            user.__run_pending_exams()
 
 
 if __name__ == '__main__':
