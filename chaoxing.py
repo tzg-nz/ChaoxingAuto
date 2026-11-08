@@ -2534,8 +2534,7 @@ class ChaoXing:
         if not pending:
             return
         for w in pending:
-            print('📝%s 开始作答（%s）' % (
-                w['name'], '作答并提交' if submit else '暂存不提交'))
+            print('📝%s 开始作答' % w['name'])
             try:
                 self.__do_work(w, submit=submit)
             except Exception as e:
@@ -2546,7 +2545,7 @@ class ChaoXing:
     # main：index 是第几个课程；chapter_id 传了就只做这个章节，不传默认全部做；
     # mode='all' 全流程（默认，章节任务 + 待做考试）/ 'course' 只刷课程（视频+图文+测验，不碰考试）
     # / 'watch' 视频+图文（测验/考试不碰）/ 'test' 只刷测验 / 'exam' 只跑考试
-    # / 'homework' 只跑作业（逐题作答后暂存，不提交；填空题由大模型作答）
+    # / 'homework' 只跑作业（逐题作答后提交；不进全刷，仅单独传此模式才跑）
     # （exam_id 传了只做这一场且自动进入考试模式，不必同时传 mode='exam'，点名
     #   要考的直接做，考过的走重考入口；不传 exam_id 时——mode='all' 全流程只做
     #   没考过的考试，做过的一律不碰；mode='exam' 批量把考过不满分的直接重考刷分）。
@@ -2611,7 +2610,8 @@ class ChaoXing:
         print(user.__progress_bar(user.pts_done, user.pts_all))
         user.__print_work_list()
         user.__print_exam_list()
-        print('开始刷剩余%d章...' % len(targets))
+        if targets:
+            print('开始刷剩余%d章...' % len(targets))
 
         for task_id, name in targets:
             print('👤 当前用户：%s' % (user.realname or user.username))
@@ -2663,9 +2663,9 @@ class ChaoXing:
                 # 权威值与本地实时计数有偏差（如服务端异步补录）才补一条进度条，一致则不重复输出
                 print(user.__progress_bar(user.pts_done, user.pts_all))
 
-        # 章节完处理作业 + 考试（all 模式全流程；course/watch/test 只管章节）
+        # 章节完处理考试（all 模式全流程；course/watch/test 只管章节；
+        # 作业不进全刷，仅 mode='homework' 单独跑）
         if mode == 'all':
-            user.__run_homeworks()
             user.__run_pending_exams()
 
 
