@@ -2136,13 +2136,14 @@ class ChaoXing:
         tail = '已完成' if cnt == 0 else '差 %d 个任务点' % cnt
         return '%s %s%s（%s）' % ('✅' if cnt == 0 else '❌', head, name, tail)
 
-    # 26、查课程完成进度：show_detail=False 只列章节名列表（快速看结构）；
-    # True 带任务点状态、总进度条和考试列表（main 固定此详细输出）。
+    # 26、查课程完成进度：show_details=False 列章节名+作业名（作业只列有什么，
+    # 不带完成度状态，快速看结构）；
+    # True 带任务点状态、总进度条、作业完成度列表和考试列表（main 固定此详细输出）。
     # 全部数据来自章节树（studentcourse 页一次请求全有，零逐章请求）：
     # 无待完成→✅，待完成→❌，括号里统一「差 N 个任务点」且各列上下对齐；
     # 总进度条用页面头部「已完成任务点: x/y」
     @classmethod
-    def progress(cls, username, password, index, show_detail=False):
+    def progress(cls, username, password, index, show_details=False):
         user = cls(username, password)
         user.login()
         user.get_course_list()
@@ -2150,16 +2151,18 @@ class ChaoXing:
         user.get_capter_list(response)
         print('🚀 当前课程：%s' % user.course_name)
         print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
-        if not show_detail:
-            # 简版：只有章节名，不带序号/任务点状态/进度条/考试列表
+        if not show_details:
+            # 简版：章节名 + 作业名（作业只列有什么，不带完成度状态）
             for _, name in user.capter_list:
                 print(name)
+            user.__print_work_status(names_only=True)
             return
         for task_id, name in user.capter_list:
             print(user.__chapter_line(task_id, name,
                                       user.chapter_status.get(str(task_id), 0)))
         pts_done, pts_total = user.course_pts or (0, 0)
         print(user.__progress_bar(pts_done, pts_total, label='🔴 任务点'))
+        user.__print_work_status()
         user.__print_exam_list()
 
     # courses：列出账号下全部课程（i.chaoxing.com/base 课程页数据链路），无需 index 参数；
@@ -2347,7 +2350,7 @@ class ChaoXing:
         r2 = self.__risky_req('GET', url, headers={'Referer': r.url})
         return r2.text
 
-    # 28.1、解析作业列表：li[data]=work/task 地址，aria-label=「名称 ; 状态（未交/已完成）」
+    # 28.1、解析作业列表：li[data]=work/task 地址（workId=作业 ID），aria-label=「名称 ; 状态（未交/已完成）」
     @staticmethod
     def __parse_work_list(html):
         soup = BeautifulSoup(html, 'html.parser')
@@ -2358,7 +2361,9 @@ class ChaoXing:
                 continue
             label = (li.get('aria-label') or '').replace('\n', ' ').strip()
             name, _, status = label.partition(';')
-            out.append({'url': url, 'name': name.strip(' ;'), 'status': status.strip()})
+            wid = re.search(r'workId=(\d+)', url)
+            out.append({'url': url, 'name': name.strip(' ;'), 'status': status.strip(),
+                        'work_id': wid.group(1) if wid else ''})
         return out
 
     # 28.2、解析 dowork 题面：div.questionLi（typename/data=qid）。
@@ -2409,9 +2414,8 @@ class ChaoXing:
         return {'action': form.get('action', ''), 'fields': fields,
                 'qids': m.group(1).strip(' ,') if m else '', 'questions': questions}
 
-    # 28.3、单份作业：逐题 LLM 作答 -> 组表单 -> 暂存（pyFlag=1&saveStatus=1）。
-    # submit=True 时再走一遍提交流程：/work/validate 预检 -> 重发 pyFlag 为空的
-    # 同一表单（服务端以 pyFlag 区分暂存/提交，saveStatus 恒为 1，与页面一致）。
+    # 28.3、单份作业：逐题 LLM 作答 -> 组表单 -> 单次 POST（暂存与提交同一表单，
+    # 仅 pyFlag 不同：1=暂存、空=提交，saveStatus 恒为 1，与页面按钮一致）。
     # 选择/判断提交 answer{qid}=data 值按 DOM 序拼接（与页面 addChoice 行为一致）；
     # 填空提交 answerEditor{qid}{空序}=<p>答案</p>（与 UEditor sync 后的形态一致）
     def __do_work(self, work, submit=False):
@@ -2490,23 +2494,60 @@ class ChaoXing:
             print('   💾 已暂存（不提交）')
         return True
 
-    # 28.45、作业清单：拉列表、打印未交作业，返回未交列表
-    # （main 概览与 __run_homeworks 共用；show=False 只拉取不打印）
-    def __print_work_list(self, show=True):
+    # 28.45、作业清单：拉列表、打印作业清单，返回待做列表
+    # （main 概览与 __run_homeworks 共用；show=False 只拉取不打印）。
+    # only_id 点名：workId 精确匹配（纯数字），否则按名称模糊匹配，取第一个命中的
+    def __print_work_list(self, show=True, only_id=None):
         html = self.__get_work_list_html()
         if not html:
             return []
         works = self.__parse_work_list(html)
-        pending = [w for w in works if '未交' in w['status']]
+        if only_id:
+            key = str(only_id)
+            hit = None
+            if key.isdigit():
+                hit = next((w for w in works if w['work_id'] == key), None)
+            if hit is None:
+                hit = next((w for w in works if key in w['name']), None)
+            if hit is None:
+                print('❌ 没找到作业「%s」（列表里共 %d 份）' % (key, len(works)))
+                return []
+            pending = [hit]
+        else:
+            pending = [w for w in works if '未交' in w['status']]
         if show:
             print('📋 作业清单')
             for w in pending:
                 print('   %s' % w['name'])
         return pending
 
-    # 28.4、跑全部未交作业（mode=homework 或 all 模式尾部调用；默认作答后提交）
-    def __run_homeworks(self, submit=True, show_list=False):
-        pending = self.__print_work_list(show=show_list)
+    # 28.46、作业完成度列表：📝 标题 + 每份一行 ✅/❌ [workId] 名称（状态），
+    # 与考试列表同款格式；progress(show_details=True) 用（main 概览的待做清单走
+    # __print_work_list，两侧用途不同：一个展示全部状态，一个列待做）。
+    # names_only=True 简版：只列作业名不带状态（progress(show_details=False) 用）
+    def __print_work_status(self, names_only=False):
+        try:
+            html = self.__get_work_list_html()
+            works = self.__parse_work_list(html) if html else []
+        except Exception as e:
+            print('📝 作业列表获取失败: %s' % type(e).__name__)
+            return
+        if not works:
+            return
+        print('📝 作业列表（共%d份）:' % len(works))
+        for w in works:
+            if names_only:
+                print('   %s' % w['name'])
+            else:
+                print('%s [%s] %s（%s）' % (
+                    '✅' if '完成' in w['status'] else '❌',
+                    w['work_id'], w['name'], w['status'] or '未知'))
+
+    # 28.4、跑作业（mode=homework 或点名 homework_id 时调用；submit=True 作答后提交，
+    # False 只暂存）。only_id 点名单份作业：workId 精确匹配，非数字按名称模糊匹配，
+    # 点中已完成份也照做（页面允许重做）
+    def __run_homeworks(self, submit=True, show_list=False, only_id=None):
+        pending = self.__print_work_list(show=show_list, only_id=only_id)
         if not pending:
             return
         for w in pending:
@@ -2518,37 +2559,45 @@ class ChaoXing:
                 print('   ❌ 作业异常中断: %s: %s' % (type(e).__name__, e))
             time.sleep(1)
 
-    # main：index 是第几个课程；chapter_id 传了就只做这个章节，不传默认全部做；
-    # mode='all' 全流程（默认，章节任务 + 待做考试）/ 'course' 只刷课程（视频+图文+测验，不碰考试）
-    # / 'watch' 视频+图文（测验/考试不碰）/ 'test' 只刷测验 / 'exam' 只跑考试
-    # / 'homework' 只跑作业（逐题作答后提交；不进全刷，仅单独传此模式才跑）
-    # （exam_id 传了只做这一场且自动进入考试模式，不必同时传 mode='exam'，点名
-    #   要考的直接做，考过的走重考入口；不传 exam_id 时——mode='all' 全流程只做
-    #   没考过的考试，做过的一律不碰；mode='exam' 批量把考过不满分的直接重考刷分）。
+    # main：index 是第几个课程；mode='all' 全流程（默认，章节任务 + 待做考试）
+    # / 'course' 只刷课程（视频+图文+测验，不碰考试）/ 'watch' 视频+图文（测验/考试不碰）
+    # / 'test' 只刷测验 / 'exam' 只跑考试 / 'homework' 只跑作业（作答后提交；
+    #   作业不进全刷，仅单独传此模式才跑）；chapter_id/homework_id/exam_id 是三个
+    #   点名参数（按执行顺序排列：章节 -> 作业 -> 考试）
+    # （chapter_id 传了只做这一章；homework_id 传了只做这一份作业且自动进入作业
+    #   模式，不必同时传 mode='homework'——workId 精确匹配（作业地址里 workId= 后
+    #   那串数字），也可传作业名模糊匹配，已完成份点名也照做；exam_id 传了只考这
+    #   一场且自动进入考试模式，不必同时传 mode='exam'，点名要考的直接做，考过的
+    #   走重考入口；不传 exam_id 时——mode='all' 全流程只做没考过的考试，做过的
+    #   一律不碰；mode='exam' 批量把考过不满分的直接重考刷分）。
+    # no_submit=True 时考试只作答保存不交卷、作业只暂存不提交（答案留在服务端，
+    #   可自行检查后手动交）；章节/测验不受影响
     # full_score=False（默认）测验客观题答完提交一次即收工（简答题一律不作答留空待批阅）；
     # True 时客观题未全对自动重做，最多 QUIZ_MAX_ROUNDS 轮争取满分
     # 答完自动交卷（交卷才有成绩，等超时收卷要白等限时）；限时耗尽自动重考（一次运行最多 3 次）
     # 扫描阶段零逐章请求：全部数据来自章节树（每章待完成任务点数+页面头部总进度），
     # 待完成章进入后才拉任务明细，输出清单并逐个执行
     @classmethod
-    def main(cls, username, password, index, chapter_id=None, mode='all', exam_id=None,
-             show_prompt=False, save_log=False, no_submit=False, full_score=False,
-             work_submit=True):
+    def main(cls, username, password, index, mode='all', chapter_id=None,
+             homework_id=None, exam_id=None, show_prompt=False, save_log=False,
+             no_submit=False, full_score=False):
         user = cls(username, password)
         user.login()
         user.get_course_list()
         response = user.get_course(index - 1)
         user.get_capter_list(response)
-        # show_prompt=True 时每题打印发给 LLM 的完整提示词（测验/考试共用 __ask_llm）
+        # show_prompt=True 时每题打印发给 LLM 的完整提示词（测验/考试/作业共用 __ask_llm）
         user.show_prompt = show_prompt
         # save_log=True 时考试题目存日志（不满分才写入，提示词跟随 show_prompt）
         user.save_log = save_log
-        # no_submit=True 时只作答保存不交卷（答案留在服务端，可自行检查后手动交）
+        # no_submit=True 时考试只作答保存不交卷、作业只暂存不提交
+        # （答案留在服务端，可自行检查后手动交）；章节/测验不受影响
         user.no_submit = no_submit
-        # exam_id 传了即视为考试模式：mode 忘写 'exam' 时旧逻辑会静默忽略 exam_id，
-        # 整门课刷完还把待做考试全做一遍——与「只考这一场」的意图正好相反
-        if mode == 'homework':
-            user.__run_homeworks(submit=work_submit, show_list=True)
+        # 点名参数传了即进入对应模式：homework_id 只做这一份作业（不必传
+        # mode='homework'），exam_id 只考这一场考试（不必传 mode='exam'）
+        if mode == 'homework' or homework_id:
+            user.__run_homeworks(submit=not no_submit, show_list=True,
+                                 only_id=homework_id)
             return
         if mode == 'exam' or exam_id:
             if exam_id:
@@ -2572,21 +2621,27 @@ class ChaoXing:
 
         # 实时任务点计数以章节树基线初始化，任务点完成时在 finish_* 内部+1并即时输出进度条
         user.pts_done, user.pts_all = user.course_pts or (0, 0)
-        print('🚀 当前课程：%s' % user.course_name)
-        print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
         targets = []
+        # 章节进度概览（课程名/章节行/进度条/考试列表/开始行）只在正常全刷出；
+        # chapter_id 单刷点名做某章，直接进章节干活，不出章节进度
+        overview = chapter_id is None
+        if overview:
+            print('🚀 当前课程：%s' % user.course_name)
+            print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
         for task_id, name in user.capter_list:
             if chapter_id is not None and str(task_id) != str(chapter_id):
                 continue
             cnt = user.chapter_status.get(str(task_id), 0)
-            print(user.__chapter_line(task_id, name, cnt))
+            if overview:
+                print(user.__chapter_line(task_id, name, cnt))
             if cnt == 0:
                 continue
             targets.append((task_id, name))
-        print(user.__progress_bar(user.pts_done, user.pts_all))
-        user.__print_exam_list()
-        if targets:
-            print('开始刷剩余%d章...' % len(targets))
+        if overview:
+            print(user.__progress_bar(user.pts_done, user.pts_all))
+            user.__print_exam_list()
+            if targets:
+                print('开始刷剩余%d章...' % len(targets))
 
         for task_id, name in targets:
             print('👤 当前用户：%s' % (user.realname or user.username))
@@ -2646,13 +2701,13 @@ class ChaoXing:
 
 if __name__ == '__main__':
     # 用法1（刷课）: python chaoxing.py <用户名> <密码> <index>
-    # 用法2（考试）: python chaoxing.py <用户名> <密码> <index> <exam_id>
-    #   exam_id 是考试地址里 examId= 后那串数字；答完自动交卷
+    # 用法2（点名考试/作业）: 在 main 调用里传关键字 exam_id=<考试地址里 examId= 后那串数字>
+    #   / homework_id=<作业地址里 workId= 后那串数字>（作业也可传作业名），点名即自动进入对应模式
     # 用法3（课程列表）: python chaoxing.py <用户名> <密码> ls
     #   列出账号下全部课程，行首序号即 main/progress 的 index
-    # 想看发给 LLM 的提示词加 show_prompt=True（测验/考试都生效）
+    # 想看发给 LLM 的提示词加 show_prompt=True（测验/考试/作业都生效）
     # 考试题目存日志加 save_log=True（不满分才写入 考试答题日志/<exam_id>_<时间戳>.txt）
-    # 只做题不交卷加 no_submit=True（答案保存在服务端，可自行检查后手动交卷）
+    # 只做题不交卷加 no_submit=True（考试答案保存在服务端、作业只暂存，可自行检查后手动交）
     if len(sys.argv) == 4 and sys.argv[3] == 'ls':
         ChaoXing.courses(sys.argv[1], sys.argv[2])
     elif len(sys.argv) == 4:

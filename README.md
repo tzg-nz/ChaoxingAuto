@@ -45,7 +45,7 @@ AttributeError: 'NoneType' object has no attribute 'get'
 - **图文完成**：图文任务自动完成
 - **章节测验**：客观题 LLM 自动答题；简答/填空类主观题留空直接交卷，不阻塞流程
 - **考试**：自动作答、自动交卷；试卷的字体反爬（常用字置换）已接入解密，逐题解码后再作答；全流程只自动考**没做过**的考试，做过的一律不碰；要重考用 `exam_id` 点名（考过的直接走重考入口）或 `mode='exam'` 批量（考过不满分的直接刷分）
-- **作业**：`mode='homework'` 单独跑（不进全刷）。逐题作答后**自动提交**；支持单选/多选/判断/填空，填空题由大模型作答（答案按 `##答案##` 格式解析，多空一空一对）。滑块缺口识别为内置模块 `slider_gap.py`（算法源自开源项目 <a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>，已内化不依赖外部项目）
+- **作业**：`mode='homework'` 单独跑（不进全刷）或 `homework_id` 点名单份（作业地址里 `workId=` 后那串数字，也可直接传作业名；已完成的照做）。逐题作答后**自动提交**；支持单选/多选/判断/填空，填空题由大模型作答（答案按 `##答案##` 格式解析，多空一空一对）。滑块缺口识别为内置模块 `slider_gap.py`（算法源自开源项目 <a href='https://github.com/tzg-nz/SliderCaptchaOcr'>SliderCaptchaOcr</a>，已内化不依赖外部项目）
 - **风控自愈**：触发 9010 验证码风控时自动识别过码，无需人工干预
 - **网络自愈**：长挂机心跳撞上被回收的 keep-alive 连接自动重发，单章节异常不中断整体流程
 
@@ -77,12 +77,14 @@ python chaoxing.py <用户名> <密码> ls
 from chaoxing import ChaoXing
 
 ChaoXing.courses('账号', '密码')                        # 列出全部课程
-ChaoXing.progress('账号', '密码', 1)                    # 列出章节名列表（快速看结构）
-ChaoXing.progress('账号', '密码', 1, True)              # 带任务点进度、考试列表的详细版
+ChaoXing.progress('账号', '密码', 1)                    # 章节名 + 作业名（快速看结构）
+ChaoXing.progress('账号', '密码', 1, True)              # 详细版：任务点进度 + 作业/考试完成度
 ChaoXing.main('账号', '密码', 1)                        # 全流程刷课（不含作业）
 ChaoXing.main('账号', '密码', 1, mode='course')         # 只刷课程内容，不碰考试
 ChaoXing.main('账号', '密码', 1, full_score=True)       # 测验争取满分
 ChaoXing.main('账号', '密码', 1, mode='homework')       # 只跑作业（作答并提交）
+ChaoXing.main('账号', '密码', 1, homework_id='57832274') # 只做这一份作业（workId 或作业名）
+ChaoXing.main('账号', '密码', 1, no_submit=True)        # 考试不交卷/作业只暂存，自行检查后手动交
 ```
 
 **main() 参数详解**
@@ -91,13 +93,14 @@ ChaoXing.main('账号', '密码', 1, mode='homework')       # 只跑作业（作
 |------|------|--------|------|
 | `username` / `password` | str | 必填 | 登录账号和密码 |
 | `index` | int | 必填 | 第几个课程（从 1 开始），和 `courses()` 输出的行首序号一一对应 |
-| `chapter_id` | int/str | None | 只刷指定章节；None = 整门课。章节 id 看 `progress()` 输出行首方括号里的数字，如 `[1240678458]` |
-| `mode` | str | `'all'` | 刷什么，五选一，见下表 |
+| `mode` | str | `'all'` | 刷什么，六选一，见下表 |
+| `chapter_id` | int/str | None | 只刷指定章节；None = 整门课。章节 id 看 `progress()` 输出行首方括号里的数字，如 `[1240678458]`。单刷时直接进章节干活，不出章节进度概览 |
+| `homework_id` | int/str | None | 只做这一份作业（传了自动按作业模式执行，不必传 `mode='homework'`）。传作业地址里 `workId=` 后那串数字精确匹配，也可直接传作业名模糊匹配；点中已完成的作业也照做 |
 | `exam_id` | int/str | None | 只做这一场考试（传了自动按考试模式执行，考过的直接重考）；不传时：`mode='all'` 只做**没考过**的考试（做过的一律不碰），`mode='exam'` 批量会把考过不满分的也重考刷分 |
-| `full_score` | bool | False | 测验满分模式，见「答题策略」。False：客观题答完提交一次即收工；True：客观题未全对自动重做，最多 3 轮争取满分 |
-| `show_prompt` | bool | False | True 时每道题都打印发给大模型的完整提示词，用于调试或围观模型怎么答题（测验/考试都生效） |
+| `show_prompt` | bool | False | True 时每道题都打印发给大模型的完整提示词，用于调试或围观模型怎么答题（测验/考试/作业都生效） |
 | `save_log` | bool | False | True 时保存考试答题日志到 `考试答题日志/`。**只有没考满分（含批阅中未出分）的场次才落盘**，满分直接丢弃——日志用于复盘错题，满分没有复盘价值；每轮重考独立存档不覆盖 |
-| `no_submit` | bool | False | True 时考试只作答保存、**不自动交卷**：答案留在服务端，你可以登录网页自己检查后手动交。 |
+| `no_submit` | bool | False | True 时考试只作答保存、**不自动交卷**，作业只作答暂存、**不自动提交**：答案留在服务端，你可以登录网页自己检查后手动交；章节/测验不受影响 |
+| `full_score` | bool | False | 测验满分模式，见「答题策略」。False：客观题答完提交一次即收工；True：客观题未全对自动重做，最多 3 轮争取满分 |
 
 `mode` 六种模式：
 
@@ -108,12 +111,12 @@ ChaoXing.main('账号', '密码', 1, mode='homework')       # 只跑作业（作
 | `'watch'` | 只刷视频和图文（测验/考试都不碰） |
 | `'test'` | 只刷章节测验（视频/图文/考试都不碰） |
 | `'exam'` | 只跑考试，可配 `exam_id` 指定单场（传了 exam_id 时其他模式也会自动切到这里；做过的考试会直接重考） |
-| `'homework'` | 只跑课程作业：逐题作答后**自动提交**（含填空题，大模型作答；不进全刷，仅单独传此模式才跑） |
+| `'homework'` | 只跑课程作业：逐题作答后**自动提交**（含填空题，大模型作答；不进全刷，仅单独传此模式才跑，或用 `homework_id` 点名单份） |
 
 **progress() / courses()**
 
 - `courses(username, password)`：列出账号下全部课程，行首序号即 `main()` 的 index；同时返回 `[(序号, 课程名), ...]` 供代码内使用
-- `progress(username, password, index)`：默认只列章节名列表（快速看课程结构）；传 `show_detail=True` 输出章节完成状态、任务点总进度和考试列表（`main()` 开头固定用这种详细输出），像[xxxxxx]这个里面是关于章节/考试id可传参给main用于单独刷
+- `progress(username, password, index)`：默认列章节名 + 作业名（作业不带完成度状态，快速看结构）；传 `show_details=True` 输出章节完成状态、任务点总进度、作业完成度列表（每份 `✅/❌ [workId] 名称（未交/已完成）`）和考试列表（`main()` 开头固定用这种详细输出），像[xxxxxx]这个里面是关于章节/作业/考试id可传参给main用于单独刷
 
 ## 答题策略
 
@@ -162,7 +165,7 @@ ChaoXing.main('账号', '密码', 1, mode='homework')       # 只跑作业（作
 - **错题报告什么时候生成？** 仅在 `full_score=True` 且 3 轮重做后客观题仍未全对时写入；默认模式提交即收工，不落盘报告。
 - **考试日志什么时候生成？** `save_log=True` 且该场没考满分（或批阅中未出分）时写入 `考试答题日志/`。
 - **触发验证码风控怎么办？** 脚本自动识别并提交验证码后继续，无需人工处理。
-- **模型采用？** 答题模型为硅基流动 `Xing4.0-29B`（免费）首选，连续失败自动降级 `agnes-3.0-flash`；模型链在 chaoxing.py 顶部 `LLM_MODELS` 处可自行增删。由于使用的人逐渐增多，所有人公用一个API key会常403，这边建议自己去硅基流动或者agens官网自己配一个key。
+- **模型采用？** 答题模型为硅基流动 `Xing4.0-29B`（免费）首选，连续失败自动降级 `agnes-3.0-flash`；模型链在 chaoxing.py 顶部 `LLM_MODELS` 处可自行增删。由于使用的人逐渐增多，所有人公用一个API key会常403，这边建议自己去<a href='https://cloud.siliconflow.cn/'>硅基流动</a>或者<a href='https://platform.agnes-ai.com/'>agens</a>官网自己配一个key。
 - **答题期间可以登录账号吗？** 可以，并且考试测验的时候一样可以进入，但是建议不要一直进入停留，不进去是最好。
 
 ## 文件结构
