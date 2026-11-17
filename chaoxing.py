@@ -774,6 +774,9 @@ class ChaoXing:
         return {"defaults": defaults, "attachments": attachments} if defaults else None
 
     # 9、视频状态接口，拿 dtoken（心跳上报路径要用）和视频时长
+    # 走 __risky_req：被 9010 拦（202 验证页）时自动过码重发，不再裸 session.get；
+    # 非 JSON 不抛异常（以前被拦后 .json() 抛 ValueError，视频直接「异常中断」跳章），
+    # 打印 HTTP 码和正文前 200 字，由调用方判 dtoken 缺失后明确报错
     def __get_video_status(self, objectid, fid):
         status_url = f"https://mooc1.chaoxing.com/ananas/status/{objectid}"
         params = {
@@ -782,7 +785,8 @@ class ChaoXing:
             "ro": "0",
             "_dc": str(int(time.time() * 1000)),
         }
-        response = self.session.get(
+        response = self.__risky_req(
+            "GET",
             status_url,
             params=params,
             headers={
@@ -790,7 +794,14 @@ class ChaoXing:
                 "X-Requested-With": "XMLHttpRequest",
             },
         )
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            print(
+                "   ⚠️ 视频状态接口非JSON（HTTP %s）: %s"
+                % (response.status_code, (response.text or "")[:200])
+            )
+            return {}
 
     # 10、enc 签名：md5('[clazzId][userid][jobid][objectId][playingTime*1000][盐值][duration*1000][clipTime]')
     @staticmethod
@@ -809,9 +820,58 @@ class ChaoXing:
         )
         return hashlib.md5(s.encode()).hexdigest()
 
+    # 10.1、时长/播放位统一成秒：原生 mArg 的 attDuration 和 status 的 duration 是秒，
+    # 个别接口/课程给毫秒；playTime 原生是毫秒。>= 36000（10 小时）按毫秒折回秒，
+    # 正常课程视频不会超过这个量级，避免把长视频误折
+    @staticmethod
+    def __secs(value):
+        try:
+            v = int(float(value))
+        except (TypeError, ValueError):
+            return 0
+        return v // 1000 if v >= 36000 else v
+
+    @staticmethod
+    def __video_duration(attachment, status):
+        # 状态接口时长优先（个别课程 mArg 只有状态接口给时长），毫秒/秒统一
+        for value in (status.get("duration"), attachment.get("attDuration")):
+            secs = ChaoXing.__secs(value)
+            if secs > 0:
+                return secs
+        return 0
+
+    @staticmethod
+    def __played_seconds(play_time, duration):
+        # playTime 原生毫秒；万一接口给秒，按与 duration 的量级判断（毫秒远大于秒）
+        try:
+            v = int(float(play_time or 0))
+        except (TypeError, ValueError):
+            return 0
+        if duration and v > duration * 2:
+            v //= 1000
+        return v
+
+    # otherInfo 速率标记 -> rt：rt_d 默认 0.9、rt_1 一倍速；数字档照传
+    @staticmethod
+    def __rt_from_other_info(other_info):
+        m = re.search(r"(?:^|-)rt_([0-9a-z]+)(?:-|$)", other_info or "")
+        if not m:
+            return "0.9"
+        tag = m.group(1)
+        if tag == "1":
+            return "1"
+        return tag if tag.isdigit() else "0.9"
+
     # 11、发一次心跳上报（reportUrl 是 mArg defaults 里返回的，末尾拼 dtoken 才是完整路径）
-    def __send_log(self, attachment, defaults, dtoken, playing_time, isdrag):
-        duration = int(attachment["attDuration"])
+    # duration 由调用方传状态接口的权威值（个别课程 mArg 没有 attDuration，硬取会 KeyError）
+    # rt（播放速率）按 otherInfo 里的 -rt_x- 标记推导：rt_d→0.9、rt_1→1；传错档服务端
+    # 直接 403，每一拍心跳都被丢、最后 isPassed=false（看完了没进度），所以 403 换档再试一次
+    def __send_log(
+        self, attachment, defaults, dtoken, playing_time, isdrag, duration=None
+    ):
+        if duration is None:
+            duration = self.__secs(attachment.get("attDuration"))
+        duration = int(duration)
         clip_time = "0_%d" % duration
         enc = self.__make_enc(
             defaults["clazzId"],
@@ -823,6 +883,10 @@ class ChaoXing:
             clip_time,
         )
         url = "%s/%s" % (defaults["reportUrl"], dtoken)
+        other_info = attachment.get("otherInfo") or ""
+        # otherInfo 里的速率标记：-rt_d-（默认=0.9）/-rt_1-（1 倍速）；
+        # 数字档直接照传，识别不了保持 0.9
+        rt = self.__rt_from_other_info(other_info)
         # otherInfo 原生以裸 & 接在 URL 上，服务端按第一个 & 截断取值；
         # courseId 必须只出现一次（独立参数），URL 里参数重复会被直接 403
         params = {
@@ -831,14 +895,14 @@ class ChaoXing:
             "duration": duration,
             "clipTime": clip_time,
             "objectId": attachment["objectId"],
-            "otherInfo": attachment["otherInfo"].split("&")[0],
+            "otherInfo": other_info.split("&")[0],
             "courseId": defaults["courseid"],
             "jobid": attachment["jobid"],
             "userid": defaults["userid"],
             "isdrag": isdrag,
             "view": "pc",
             "enc": enc,
-            "rt": "0.9",
+            "rt": rt,
             "videoFaceCaptureEnc": attachment.get("videoFaceCaptureEnc", ""),
             "dtype": "Video",
             "_t": str(int(time.time() * 1000)),
@@ -846,31 +910,46 @@ class ChaoXing:
             "attDurationEnc": attachment.get("attDurationEnc", ""),
             "courseEngineInfo": "false",
         }
-        # 手工拼 query：otherInfo 原样输出（与原生一致），其余参数照常转义
-        query = "&".join(
-            "%s=%s" % (key, value if key == "otherInfo" else quote(str(value), safe=""))
-            for key, value in params.items()
-        )
-        try:
-            response = self.__risky_req(
-                "GET",
-                "%s?%s" % (url, query),
-                headers={
-                    "Referer": self.VIDEO_REFERER,
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+
+        def _fire(rt_value):
+            params["rt"] = rt_value
+            # 手工拼 query：otherInfo 原样输出（与原生一致），其余参数照常转义
+            query = "&".join(
+                "%s=%s"
+                % (key, value if key == "otherInfo" else quote(str(value), safe=""))
+                for key, value in params.items()
             )
-        except requests.exceptions.RequestException as e:
-            # 重发仍断连：丢这一拍不致命，进度按时钟累积，60s 后下一拍把完整进度补上
-            print("   ⚠️ 心跳上报网络异常: %s" % type(e).__name__)
+            try:
+                return self.__risky_req(
+                    "GET",
+                    "%s?%s" % (url, query),
+                    headers={
+                        "Referer": self.VIDEO_REFERER,
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                )
+            except requests.exceptions.RequestException as e:
+                # 重发仍断连：丢这一拍不致命，进度按时钟累积，60s 后下一拍补上
+                print("   ⚠️ 心跳上报网络异常: %s" % type(e).__name__)
+                return None
+
+        response = _fire(rt)
+        if response is not None and response.status_code == 403:
+            alt = "1" if rt == "0.9" else "0.9"
+            print("   ⚠️ 心跳 403（rt=%s），换 rt=%s 重试" % (rt, alt))
+            response = _fire(alt)
+        if response is None:
             return {}
         if response.status_code != 200:
-            print("心跳上报异常:", response.status_code)
+            print(
+                "   心跳上报异常: HTTP %s %s"
+                % (response.status_code, (response.text or "")[:200])
+            )
             return {}
         try:
             return response.json()
         except ValueError:
-            print("心跳上报响应非JSON:", response.text[:120])
+            print("   心跳上报响应非JSON: %s" % (response.text or "")[:200])
             return {}
 
     # 12、刷完一个视频：isdrag=3 起始上报 -> isdrag=2 每60秒进度上报 -> isdrag=4 结束上报（isPassed 的开关在这里）
@@ -878,20 +957,43 @@ class ChaoXing:
     # 所以这里必须按 1 倍速真实时间挂机，节奏与原生播放器 reportTimeInterval=60 一致
     def __finish_one_video(self, attachment, defaults):
         title = self.__att_title(attachment)
-        duration = int(attachment["attDuration"])
-        print("📺%s 开始观看 %s" % (title, self.__fmt_dur(duration)))
-        status = self.__get_video_status(
-            attachment["objectId"], defaults.get("fid") or self.fid
-        )
+        # 状态接口是权威：拿 dtoken 和真实时长。以前先硬取 attachment["attDuration"]、
+        # 再 status["dtoken"]，接口被拦/缺字段直接 KeyError 崩到「异常中断」跳章
+        try:
+            status = self.__get_video_status(
+                attachment["objectId"], defaults.get("fid") or self.fid
+            )
+        except Exception as e:
+            print("❌📺%s 状态接口请求失败: %s: %s" % (title, type(e).__name__, e))
+            return False
+        if not isinstance(status, dict) or not status.get("dtoken"):
+            # status=fail、登录态失效、页面改版都走这里；明确报错而不是崩
+            print(
+                "❌📺%s 状态接口无 dtoken（视频不可学/已下架？）: %s"
+                % (title, str(status)[:200])
+            )
+            return False
+        if status.get("isPassed"):
+            # 服务端已判通过（上次刷过但本地没记录）：不必重复挂机
+            print("✅📺%s 服务端已判完成，跳过" % title)
+            return True
         dtoken = status["dtoken"]
-        # 从服务端记录的播放位置续播（playTime 是毫秒）；已到片尾说明上次没判过，从头再来
-        played_from = int(status.get("playTime") or 0) // 1000
+        # 时长以状态接口为准，并统一毫秒/秒（个别接口给毫秒，按秒算会挂成小时级）
+        duration = self.__video_duration(attachment, status)
+        if duration <= 0:
+            print("❌📺%s 取不到视频时长，跳过" % title)
+            return False
+        print("📺%s 开始观看 %s" % (title, self.__fmt_dur(duration)))
+        # 从服务端记录的播放位置续播（playTime 原生是毫秒）；已到片尾说明上次没判过，从头再来
+        played_from = self.__played_seconds(status.get("playTime"), duration)
         if played_from >= duration:
             played_from = 0
         if played_from:
             print("   📺%s 从 %s 处续播" % (title, self.__fmt_dur(played_from)))
 
-        self.__send_log(attachment, defaults, dtoken, played_from, 3)
+        self.__send_log(
+            attachment, defaults, dtoken, played_from, 3, duration=duration
+        )
 
         # playingTime 严格跟随真实时钟：每真实流逝1秒进度走1秒，每60秒发一次 isdrag=2 心跳
         # 触发条件用【进度差】而不是真实时间差：进度由时钟线性推出，锚点记进度值本身，
@@ -899,6 +1001,7 @@ class ChaoXing:
         report_interval = 60
         start_real = time.time()
         last_reported = played_from
+        fail_streak = 0
         print(
             "   📺%s 观看中 %s / %s"
             % (title, self.__fmt_dur(played_from), self.__fmt_dur(duration))
@@ -917,11 +1020,58 @@ class ChaoXing:
                     "   📺%s 观看中 %s / %s"
                     % (title, self.__fmt_dur(playing), self.__fmt_dur(duration))
                 )
-                self.__send_log(attachment, defaults, dtoken, playing, 2)
+                beat = self.__send_log(
+                    attachment, defaults, dtoken, playing, 2, duration=duration
+                )
+                if isinstance(beat, dict) and beat:
+                    fail_streak = 0
+                else:
+                    fail_streak += 1
+                    if fail_streak >= 3:
+                        # 连续三拍被拒（rt/参数不兼容或被风控）：止损，别干等整段视频
+                        print(
+                            "⚠️📺%s 心跳连续 3 拍被拒，提前止损（进度已保留，下次运行续播）"
+                            % title
+                        )
+                        break
                 last_reported = playing
-        resp = self.__send_log(attachment, defaults, dtoken, duration, 4)
+        resp = self.__send_log(
+            attachment, defaults, dtoken, duration, 4, duration=duration
+        )
 
         passed = resp.get("isPassed", False) if isinstance(resp, dict) else False
+        if not passed:
+            # 服务端异步复核/结束拍丢失：等 3 秒复查状态，补一拍心跳再重发结束上报
+            time.sleep(3)
+            try:
+                again = self.__get_video_status(
+                    attachment["objectId"], defaults.get("fid") or self.fid
+                )
+            except Exception:
+                again = {}
+            if isinstance(again, dict) and again.get("isPassed"):
+                passed = True
+            elif isinstance(again, dict) and again.get("dtoken"):
+                self.__send_log(
+                    attachment,
+                    defaults,
+                    again["dtoken"],
+                    duration,
+                    2,
+                    duration=duration,
+                )
+                resp2 = self.__send_log(
+                    attachment,
+                    defaults,
+                    again["dtoken"],
+                    duration,
+                    4,
+                    duration=duration,
+                )
+                passed = bool(
+                    isinstance(resp2, dict) and resp2.get("isPassed", False)
+                )
+                resp = resp2 or resp
         print(
             "✅📺%s 观看完成" % title
             if passed
@@ -929,8 +1079,7 @@ class ChaoXing:
         )
         if passed:
             # 实时任务点：每刷完一个+1并即时输出总进度条（章节末服务端刷新会再校正）
-            self.pts_done = min(self.pts_done + 1, self.pts_all)
-            print(self.__progress_bar(self.pts_done, self.pts_all))
+            self.__bump_pts()
         return passed
 
     # 13、刷完一个章节内的所有视频任务
@@ -943,12 +1092,14 @@ class ChaoXing:
         defaults = marg["defaults"]
         jobs = []
         for attachment in marg["attachments"]:
-            # 只要视频任务（有 jobid/objectId/attDuration 的才是）
-            if (
-                "jobid" not in attachment
-                or "objectId" not in attachment
-                or "attDuration" not in attachment
-            ):
+            # 只要视频任务：明确 document/workid 的排除；旧形态 type 缺失时靠
+            # objectId+attDuration 兜底；时长可能只在状态接口给，不强制 attDuration
+            if "jobid" not in attachment or "objectId" not in attachment:
+                continue
+            kind = attachment.get("type")
+            if kind in ("document", "workid"):
+                continue
+            if kind is None and "attDuration" not in attachment:
                 continue
             if attachment.get("isPassed"):
                 continue
@@ -1038,6 +1189,16 @@ class ChaoXing:
         bar = "█" * filled + "░" * (bar_len - filled)
         return "📊 %s: %d/%d %s %d%%" % (label, done, total, bar, done * 100 // total)
 
+    # 任务点 +1 并即时刷新总进度条：pts_all 未知（0）时不再被 min(done+1, 0)
+    # 截断回 0（进度条永远 0%，看着像没刷），改为只报已完成个数
+    def __bump_pts(self):
+        self.pts_done += 1
+        if self.pts_all:
+            self.pts_done = min(self.pts_done, self.pts_all)
+            print(self.__progress_bar(self.pts_done, self.pts_all))
+        else:
+            print("✅ 已完成 %d 个任务点" % self.pts_done)
+
     # 15、刷完一个章节内的所有文档任务：对每个未完成(job=true)的文档调一次完成接口
     # 网页端滚动到底部触发的 finishJob 就是这一个请求，服务端只认它，不校验真实阅读时长
     # （已实测：不滚动直接调，reload 后附件的 job 字段消失，完成持久化）
@@ -1084,8 +1245,7 @@ class ChaoXing:
             if done:
                 print("✅📄%s %s" % (title, resp.get("msg", "")))
                 # 实时任务点：每完成一个+1并即时输出总进度条
-                self.pts_done = min(self.pts_done + 1, self.pts_all)
-                print(self.__progress_bar(self.pts_done, self.pts_all))
+                self.__bump_pts()
             else:
                 print("❌📄%s %s" % (title, response.text[:200]))
             ok_list.append(done)
@@ -1755,8 +1915,7 @@ class ChaoXing:
                     % ("（简答题待老师批阅）" if has_short else "")
                 )
                 # 实时任务点：每完成一份作业+1并即时输出总进度条
-                self.pts_done = min(self.pts_done + 1, self.pts_all)
-                print(self.__progress_bar(self.pts_done, self.pts_all))
+                self.__bump_pts()
                 break
             if not full_score:
                 # 默认不追求满分：提交一次即收工
@@ -1784,8 +1943,7 @@ class ChaoXing:
                 % ("，简答题留空待老师批阅" if has_short else "")
             )
             # 实时任务点：作业已提交，按完成计
-            self.pts_done = min(self.pts_done + 1, self.pts_all)
-            print(self.__progress_bar(self.pts_done, self.pts_all))
+            self.__bump_pts()
         elif not all_right:
             print("❌ 连续 %d 轮作答均未全部答对，本测验失败" % self.QUIZ_MAX_ROUNDS)
         if not submitted_ok:
