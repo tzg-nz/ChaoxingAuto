@@ -19,7 +19,7 @@ print = partial(print, flush=True)
 # 真接控制台时 Python 走 WriteConsoleW，不受此处影响
 for _stream in (sys.stdout, sys.stderr):
     try:
-        _stream.reconfigure(encoding='utf-8', errors='replace')
+        _stream.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError, OSError):
         pass
 
@@ -41,12 +41,16 @@ import slider_gap
 
 class ChaoXing:
     # 视频播放器页面地址，心跳上报需要带上这个 Referer
-    VIDEO_REFERER = 'https://mooc1.chaoxing.com/ananas/modules/video/index.html?v=2026-0828-1810'
+    VIDEO_REFERER = (
+        "https://mooc1.chaoxing.com/ananas/modules/video/index.html?v=2026-0828-1810"
+    )
 
     # 字形比对基准字体：思源黑体 CN Normal（cxsecret 源字体即它改的 cmap）
-    CXSECRET_BASE_FONT = os.path.join(BASE_DIR, 'fonts', 'SourceHanSansCN-Normal.otf')
-    CXSECRET_BASE_FONT_URL = ('https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@release/'
-                              'SubsetOTF/CN/SourceHanSansCN-Normal.otf')
+    CXSECRET_BASE_FONT = os.path.join(BASE_DIR, "fonts", "SourceHanSansCN-Normal.otf")
+    CXSECRET_BASE_FONT_URL = (
+        "https://cdn.jsdelivr.net/gh/adobe-fonts/source-han-sans@release/"
+        "SubsetOTF/CN/SourceHanSansCN-Normal.otf"
+    )
     # 9010 风控验证码识别引擎（懒加载，进程内复用）
     __ocr = None
 
@@ -55,22 +59,26 @@ class ChaoXing:
     # 全部走免费档：硅基流动 Xing4.0-29B（¥0，免费名单会换代，以官方价格页为准）
     # 优先，Agnes 3.0 兜底（免费但账号偶发风控 403）
     LLM_MODELS = [
-        {'model': 'XingChenAGI/Xing4.0-29B',
-         'url': 'https://api.siliconflow.cn/v1/chat/completions',
-         'key': 'sk-umvyxirabusphyjgbuvadwzxvbwznrtzrwzrsylqlcybulfe'},
-        {'model': 'agnes-3.0-flash',
-         'url': 'https://apihub.agnes-ai.com/v1/chat/completions',
-         'key': ''},
+        {
+            "model": "XingChenAGI/Xing4.0-29B",
+            "url": "https://api.siliconflow.cn/v1/chat/completions",
+            "key": "sk-umvyxirabusphyjgbuvadwzxvbwznrtzrwzrsylqlcybulfe",
+        },
+        {
+            "model": "agnes-3.0-flash",
+            "url": "https://apihub.agnes-ai.com/v1/chat/completions",
+            "key": "",
+        },
     ]
     __llm_idx = 0
     # 测验最多作答轮数：每轮提交后判分，错的题带上历次错误答案重新问，直到全对
     QUIZ_MAX_ROUNDS = 3
     # 错题报告统一输出目录（脚本目录下，一个文件夹不细分子目录）
-    REPORT_DIR = os.path.join(BASE_DIR, '错题报告')
+    REPORT_DIR = os.path.join(BASE_DIR, "错题报告")
     # 考试答题日志输出目录（save_log=True 且不满分才写入，一场考试一个文件）
-    EXAM_LOG_DIR = os.path.join(BASE_DIR, '考试答题日志')
+    EXAM_LOG_DIR = os.path.join(BASE_DIR, "考试答题日志")
     # 考试滑块验证码版本（cx_captcha 组件，与页面加载的 load-i.min.js 一致）
-    EXAM_CAPTCHA_VERSION = '1.1.22'
+    EXAM_CAPTCHA_VERSION = "1.1.22"
     # 考试满分线：已完成但最终成绩低于此分的自动重考刷分（取最高成绩规则，重考不亏）
     EXAM_FULL_SCORE = 100.0
 
@@ -79,15 +87,15 @@ class ChaoXing:
         self.password = password
         self.session = requests.session()
         self.public_headers = {
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Pragma': 'no-cache',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
-            'sec-ch-ua': '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Windows"',
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Pragma": "no-cache",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+            "sec-ch-ua": '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
         }
         self.session.headers.update(self.public_headers)
         # 传输层自动重试：服务端/中间设备会回收闲置的 keep-alive 连接，长挂机的心跳
@@ -95,11 +103,16 @@ class ChaoXing:
         # 穿透把整个脚本炸掉（单视频挂得短难触发，多视频连挂十几分钟必踩）。
         # GET/HEAD 幂等可安全换新连接重发；POST 交卷/保存类不在传输层重试，由
         # __req_with_retry 统一兜底
-        retry = requests.adapters.Retry(total=3, connect=3, read=2, backoff_factor=0.5,
-                                        allowed_methods=frozenset({'GET', 'HEAD', 'OPTIONS'}))
+        retry = requests.adapters.Retry(
+            total=3,
+            connect=3,
+            read=2,
+            backoff_factor=0.5,
+            allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+        )
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
-        self.session.mount('https://', adapter)
-        self.session.mount('http://', adapter)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
         self.course_list = []
         self.capter_list = []
         # 章节树自带的数据（studentcourse 页面一次请求全都有，无需逐章进详情页查）：
@@ -111,7 +124,9 @@ class ChaoXing:
         # 进度条；all 模式章节结束后用服务端刷新校正回权威值
         self.pts_done = 0
         self.pts_all = 0
-        self._stu_params = None  # studentcourse 页请求参数，refresh_chapter_status 重拉时复用
+        self._stu_params = (
+            None  # studentcourse 页请求参数，refresh_chapter_status 重拉时复用
+        )
         self.fid = None
         self.realname = None
 
@@ -135,21 +150,23 @@ class ChaoXing:
     # 固定 key "u2oh6Vu^HWe4_AES"，AES-CBC，iv=key，Pkcs7，输出 Base64
     @staticmethod
     def get_aes_encrypt(word):
-        key = b'u2oh6Vu^HWe4_AES'
+        key = b"u2oh6Vu^HWe4_AES"
         cipher = AES.new(key, AES.MODE_CBC, iv=key)
-        return base64.b64encode(cipher.encrypt(pad(word.encode('utf-8'), AES.block_size))).decode()
+        return base64.b64encode(
+            cipher.encrypt(pad(word.encode("utf-8"), AES.block_size))
+        ).decode()
 
     # 1、登录首页获取源数据
     def __get_login_meta(self):
-        login_meta_url = 'https://passport2.chaoxing.com/login'
+        login_meta_url = "https://passport2.chaoxing.com/login"
         login_meta_headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Referer': 'https://v200255.mooc.chaoxing.com/',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-site',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1',
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Referer": "https://v200255.mooc.chaoxing.com/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-site",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
         }
 
         response = self.session.get(login_meta_url, headers=login_meta_headers)
@@ -157,37 +174,37 @@ class ChaoXing:
 
     # 2、登录
     def login(self):
-        login_url = 'https://passport2.chaoxing.com/fanyalogin'
+        login_url = "https://passport2.chaoxing.com/fanyalogin"
         meta_response = self.__get_login_meta()
-        soup = BeautifulSoup(meta_response.content, 'html.parser')
-        fid = soup.select_one('#fid').get('value')
-        refer = soup.select_one('#refer').get('value')
-        t = soup.select_one('#t').get('value')
-        forbidotherlogin = soup.select_one('#forbidotherlogin').get('value')
-        validate = soup.select_one('#validate').get('value', '')
-        doubleFactorLogin = soup.select_one('#doubleFactorLogin').get('value')
-        independentId = soup.select_one('#independentId').get('value')
+        soup = BeautifulSoup(meta_response.content, "html.parser")
+        fid = soup.select_one("#fid").get("value")
+        refer = soup.select_one("#refer").get("value")
+        t = soup.select_one("#t").get("value")
+        forbidotherlogin = soup.select_one("#forbidotherlogin").get("value")
+        validate = soup.select_one("#validate").get("value", "")
+        doubleFactorLogin = soup.select_one("#doubleFactorLogin").get("value")
+        independentId = soup.select_one("#independentId").get("value")
         username_encrypt = self.get_aes_encrypt(self.username)
         password_encrypt = self.get_aes_encrypt(self.password)
         login_headers = {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Origin': 'https://passport2.chaoxing.com',
-            'Referer': 'https://passport2.chaoxing.com/login?newversion=true&loginType=4&fid=200255&refer=http://i.mooc.chaoxing.com',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'X-Requested-With': 'XMLHttpRequest',
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://passport2.chaoxing.com",
+            "Referer": "https://passport2.chaoxing.com/login?newversion=true&loginType=4&fid=200255&refer=http://i.mooc.chaoxing.com",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "X-Requested-With": "XMLHttpRequest",
         }
         data = {
-            'fid': fid,
-            'uname': username_encrypt,
-            'password': password_encrypt,
-            'refer': refer,
-            't': t,
-            'forbidotherlogin': forbidotherlogin,
-            'validate': validate,
-            'doubleFactorLogin': doubleFactorLogin,
-            'independentId': independentId,
+            "fid": fid,
+            "uname": username_encrypt,
+            "password": password_encrypt,
+            "refer": refer,
+            "t": t,
+            "forbidotherlogin": forbidotherlogin,
+            "validate": validate,
+            "doubleFactorLogin": doubleFactorLogin,
+            "independentId": independentId,
         }
         response = self.session.post(login_url, headers=login_headers, data=data)
         self.fid = fid
@@ -195,12 +212,12 @@ class ChaoXing:
             result = response.json()
         except ValueError:
             result = {}
-        if result.get('status') is True:
-            print('✅ 登录成功')
+        if result.get("status") is True:
+            print("✅ 登录成功")
             self.realname = self.__fetch_realname()
-            print('👤 当前用户：%s' % (self.realname or self.username))
+            print("👤 当前用户：%s" % (self.realname or self.username))
         else:
-            print('❌ 登录失败: %s' % result.get('mesg', response.text[:200]))
+            print("❌ 登录失败: %s" % result.get("mesg", response.text[:200]))
             # 登录失败不再返回：带着未登录会话继续跑只会在后续接口上崩出难看的 traceback
             raise SystemExit(1)
         return response
@@ -208,9 +225,11 @@ class ChaoXing:
     # 2.1、登录成功后从 i.mooc 空间页提取实际昵称（服务端渲染，fanyalogin 响应里没有）
     def __fetch_realname(self):
         try:
-            response = self.__risky_req('GET', 'http://i.mooc.chaoxing.com/space/index')
-            soup = BeautifulSoup(response.content, 'html.parser')
-            name_tag = soup.select_one('span.zt_u_name') or soup.select_one('p.personalName')
+            response = self.__risky_req("GET", "http://i.mooc.chaoxing.com/space/index")
+            soup = BeautifulSoup(response.content, "html.parser")
+            name_tag = soup.select_one("span.zt_u_name") or soup.select_one(
+                "p.personalName"
+            )
             if name_tag is not None:
                 return name_tag.get_text(strip=True)
         except Exception:
@@ -219,51 +238,59 @@ class ChaoXing:
 
     # 3、所有课程首页获取源数据
     def __get_course_list_meta(self):
-        url = 'https://i.chaoxing.com/base'
+        url = "https://i.chaoxing.com/base"
         course_list_meta_headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Referer': 'https://i.chaoxing.com/',
-            'Sec-Fetch-Dest': 'iframe',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-site',
-            'Upgrade-Insecure-Requests': '1',
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Referer": "https://i.chaoxing.com/",
+            "Sec-Fetch-Dest": "iframe",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-site",
+            "Upgrade-Insecure-Requests": "1",
         }
         ts = str(int(time.time() * 1000))
-        params = {
-            "t": ts
-        }
+        params = {"t": ts}
         meta_response = self.session.get(url, params=params)
-        soup = BeautifulSoup(meta_response.content, 'html.parser')
+        soup = BeautifulSoup(meta_response.content, "html.parser")
         # 不同单位部署的导航名不同：常见「课程」，教务对接版叫「教务课程」；按 name 属性定位不依赖顺序
         course_tab = soup.select_one('[name="课程"], [name="教务课程"]')
         if course_tab is None:
             # 仍找不到：列出页面全部带 dataurl 的导航栏目名，便于确认该账号页面的命名并适配
-            nav_names = [el.get('name') for el in soup.select('[dataurl]') if el.get('name')]
-            title = soup.title.get_text(strip=True) if soup.title else '(无标题)'
-            print('❌ 课程入口获取失败（页面标题: %s）' % title)
-            print('   页面导航栏目: %s' % ('、'.join(nav_names) or '(未解析到任何栏目)'))
-            print('   请把上面一行反馈给作者以适配该命名；'
-                  '或浏览器登录 i.chaoxing.com 确认课程所在栏目')
+            nav_names = [
+                el.get("name") for el in soup.select("[dataurl]") if el.get("name")
+            ]
+            title = soup.title.get_text(strip=True) if soup.title else "(无标题)"
+            print("❌ 课程入口获取失败（页面标题: %s）" % title)
+            print(
+                "   页面导航栏目: %s" % ("、".join(nav_names) or "(未解析到任何栏目)")
+            )
+            print(
+                "   请把上面一行反馈给作者以适配该命名；"
+                "或浏览器登录 i.chaoxing.com 确认课程所在栏目"
+            )
             raise SystemExit(1)
-        course_list_meta_url = course_tab.get('dataurl')
-        response = self.session.get(course_list_meta_url, headers=course_list_meta_headers)
+        course_list_meta_url = course_tab.get("dataurl")
+        response = self.session.get(
+            course_list_meta_url, headers=course_list_meta_headers
+        )
         return response
 
     # 4、获取课程列表
     def get_course_list(self):
-        course_list_url = 'https://mooc2-ans.chaoxing.com/mooc2-ans/visit/courselistdata'
+        course_list_url = (
+            "https://mooc2-ans.chaoxing.com/mooc2-ans/visit/courselistdata"
+        )
         course_list_headers = {
-            'Accept': 'text/html, */*; q=0.01',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Origin': 'https://mooc2-ans.chaoxing.com',
-            'Referer': 'https://mooc2-ans.chaoxing.com/visit/interaction?s=3a89767141e1a86d253c54a2eca633bc',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'X-Requested-With': 'XMLHttpRequest',
+            "Accept": "text/html, */*; q=0.01",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": "https://mooc2-ans.chaoxing.com",
+            "Referer": "https://mooc2-ans.chaoxing.com/visit/interaction?s=3a89767141e1a86d253c54a2eca633bc",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "X-Requested-With": "XMLHttpRequest",
         }
         meta_response = self.__get_course_list_meta()
-        soup = BeautifulSoup(meta_response.content, 'html.parser')
+        soup = BeautifulSoup(meta_response.content, "html.parser")
 
         # 课程页有两种服务端渲染：mooc2-ans（有 #myLearn 这套隐藏域）和
         # mooc1-2「学生端」（没有这些元素）。缺元素时按下面的默认值提交同样
@@ -273,51 +300,58 @@ class ChaoXing:
             if el is None:
                 return default
             value = el.get(attr, default)
-            return default if value in (None, '') else value
+            return default if value in (None, "") else value
 
-        courseType = meta_val('#myLearn', 'coursetype', '1')
-        courseFolderId = meta_val('#courseFolderId', 'value', '0')
-        query = meta_val('#searchInput', 'value', '')
-        pageHeader = meta_val('#tchPageHeader', 'value', '')
-        single = meta_val('#single', 'value', '0')
-        superstarClass = meta_val('#superstarClass', 'value', '0')
-        isFirefly = meta_val('#isFirefly', 'value', '0')
-        fid = meta_val('#filterFid', 'value', '')
+        courseType = meta_val("#myLearn", "coursetype", "1")
+        courseFolderId = meta_val("#courseFolderId", "value", "0")
+        query = meta_val("#searchInput", "value", "")
+        pageHeader = meta_val("#tchPageHeader", "value", "")
+        single = meta_val("#single", "value", "0")
+        superstarClass = meta_val("#superstarClass", "value", "0")
+        isFirefly = meta_val("#isFirefly", "value", "0")
+        fid = meta_val("#filterFid", "value", "")
         data = {
-            'courseType': courseType,
-            'courseFolderId': courseFolderId,
-            'query': query,
-            'pageHeader': pageHeader,
-            'single': single,
-            'superstarClass': superstarClass,
-            'isFirefly': isFirefly,
-            'fid': fid,
+            "courseType": courseType,
+            "courseFolderId": courseFolderId,
+            "query": query,
+            "pageHeader": pageHeader,
+            "single": single,
+            "superstarClass": superstarClass,
+            "isFirefly": isFirefly,
+            "fid": fid,
         }
         # Referer 随实际课程页走：写死的那条属于别的单位/会话，换成本次真实页面更稳
-        course_list_headers['Referer'] = meta_response.url
-        response = self.session.post(course_list_url, headers=course_list_headers, data=data)
-        post_soup = BeautifulSoup(response.content, 'html.parser')
-        course_list_origin = post_soup.select('#stuNormalCourseListDiv > div')
+        course_list_headers["Referer"] = meta_response.url
+        response = self.session.post(
+            course_list_url, headers=course_list_headers, data=data
+        )
+        post_soup = BeautifulSoup(response.content, "html.parser")
+        course_list_origin = post_soup.select("#stuNormalCourseListDiv > div")
         for item in course_list_origin:
-            course_infos = item.select_one('div .course-info .inlineBlock a')
+            course_infos = item.select_one("div .course-info .inlineBlock a")
             if course_infos is None:
                 # 未开课等特殊状态卡片没有可点入的 a 链接（页面渲染「本课程未开课」标签）：
                 # 静默跳过，不占 index 也不输出提示
                 continue
-            course_url = course_infos.get('href')
-            title = course_infos.select_one('span').get_text()
+            course_url = course_infos.get("href")
+            title = course_infos.select_one("span").get_text()
             self.course_list.append((title, course_url))
         if not self.course_list:
             # 兜底：新版单位课程页既没有隐藏域也没有 #stuNormalCourseListDiv，
             # POST 只能拿到空壳；改为直接在返回 HTML 里抓课程卡片入口链接
-            for page in (post_soup, BeautifulSoup(meta_response.content, 'html.parser')):
+            for page in (
+                post_soup,
+                BeautifulSoup(meta_response.content, "html.parser"),
+            ):
                 self.course_list = self.__collect_course_links(page)
                 if self.course_list:
                     break
         if not self.course_list:
             self.__dump_course_page_debug(meta_response, response)
-            print('❌ 未解析到任何课程：账号可能没有课程，或课程页结构有变；'
-                  '请用浏览器登录 i.chaoxing.com 确认有课程后重试')
+            print(
+                "❌ 未解析到任何课程：账号可能没有课程，或课程页结构有变；"
+                "请用浏览器登录 i.chaoxing.com 确认有课程后重试"
+            )
 
     # 4.1、兜底解析课程卡片：只认同时带 courseid 与 clazzid 的链接——章节/任务点
     # 链接也带 courseid 但没有 clazzid，既不会漏课程也不会把章节当课程；
@@ -325,68 +359,68 @@ class ChaoXing:
     @staticmethod
     def __collect_course_links(soup):
         found = {}
-        for a in soup.select('a[href]'):
-            href = (a.get('href') or '').strip()
-            courseid = re.search(r'[?&]courseid=([^&]*)', href, re.I)
-            clazzid = re.search(r'[?&]clazzid=([^&]*)', href, re.I)
+        for a in soup.select("a[href]"):
+            href = (a.get("href") or "").strip()
+            courseid = re.search(r"[?&]courseid=([^&]*)", href, re.I)
+            clazzid = re.search(r"[?&]clazzid=([^&]*)", href, re.I)
             if not courseid or not clazzid:
                 continue
-            if href.startswith('//'):
-                href = 'https:' + href
-            title = re.sub(r'\s+', ' ', a.get_text(' ', strip=True)).strip()
+            if href.startswith("//"):
+                href = "https:" + href
+            title = re.sub(r"\s+", " ", a.get_text(" ", strip=True)).strip()
             if not title:
                 continue
             key = (courseid.group(1).lower(), clazzid.group(1).lower())
-            if len(title) > len(found.get(key, ('', ''))[0]):
+            if len(title) > len(found.get(key, ("", ""))[0]):
                 found[key] = (title, href)
         return list(found.values())
 
     # 4.2、课程列表彻底解析失败时把课程页 HTML 落到脚本目录，便于反馈页面结构适配
     @staticmethod
     def __dump_course_page_debug(meta_response, post_response=None):
-        pages = [('meta', meta_response)]
+        pages = [("meta", meta_response)]
         if post_response is not None:
-            pages.append(('post', post_response))
+            pages.append(("post", post_response))
         for tag, resp in pages:
-            path = os.path.join(BASE_DIR, '课程页调试_%s.html' % tag)
+            path = os.path.join(BASE_DIR, "课程页调试_%s.html" % tag)
             try:
-                with open(path, 'wb') as f:
+                with open(path, "wb") as f:
                     f.write(resp.content)
-                print('   （已保存课程页 HTML：%s，可发给作者适配）' % path)
+                print("   （已保存课程页 HTML：%s，可发给作者适配）" % path)
             except OSError:
                 pass
 
     # 5、单个课程首页获取源数据
     def __get_course_meta(self, index):
         meta_headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Referer': 'https://mooc2-ans.chaoxing.com/visit/interaction?s=2fb658e658dd997dea0dd7057ec66e1f',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1',
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Referer": "https://mooc2-ans.chaoxing.com/visit/interaction?s=2fb658e658dd997dea0dd7057ec66e1f",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
         }
         target_course = self.course_list[index]
         target_course_url = target_course[-1]
-        response = self.__risky_req('GET', target_course_url, headers=meta_headers)
+        response = self.__risky_req("GET", target_course_url, headers=meta_headers)
         return response
 
     def get_course(self, index):
         # 课程大标题（如「大学生安全教育（入学篇）」），供答题提示词动态引用
-        self.course_name = (self.course_list[index][0] or '').strip()
-        course_url = 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse'
+        self.course_name = (self.course_list[index][0] or "").strip()
+        course_url = "https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse"
         course_headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'Referer': 'https://mooc2-ans.chaoxing.com/visit/interaction?s=2fb658e658dd997dea0dd7057ec66e1f',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1',
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Referer": "https://mooc2-ans.chaoxing.com/visit/interaction?s=2fb658e658dd997dea0dd7057ec66e1f",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
         }
         meta_response = self.__get_course_meta(index)
-        soup = BeautifulSoup(meta_response.content, 'html.parser')
+        soup = BeautifulSoup(meta_response.content, "html.parser")
 
         # 课程入口页有两代形态，两种都要吃得下：
         #   a) 旧 mooc2-ans 服务端渲染页：courseid/clazzid/cpi/enc… 都在隐藏域里；
@@ -394,77 +428,90 @@ class ChaoXing:
         #      但重定向后的最终 URL query 里 courseId/clazzId/cpi/enc/ut/t 一个不少。
         # 以前只认 a)，碰到 b) 会误判成「被 9010 风控拦截」——其实是页面改版，重试没用
         def hidden(*names):
-            for el in soup.find_all('input'):
-                if (el.get('id') or '').lower() in names:
-                    value = el.get('value')
-                    if value not in (None, ''):
+            for el in soup.find_all("input"):
+                if (el.get("id") or "").lower() in names:
+                    value = el.get("value")
+                    if value not in (None, ""):
                         return value
             return None
 
         # 原始地址和跳转后的最终地址都收进 query，谁有值用谁的
         url_query = {}
-        for u in (getattr(meta_response.request, 'url', '') or '', meta_response.url):
+        for u in (getattr(meta_response.request, "url", "") or "", meta_response.url):
             for key, value in parse_qsl(urlparse(u).query):
                 if value:
                     url_query.setdefault(key, value)
 
         def pick(hidden_names, query_names, default=None):
-            return (hidden(*hidden_names)
-                    or next((url_query[k] for k in query_names if url_query.get(k)), None)
-                    or default)
+            return (
+                hidden(*hidden_names)
+                or next((url_query[k] for k in query_names if url_query.get(k)), None)
+                or default
+            )
 
-        legacy_page = hidden('courseid') is not None  # 旧版隐藏域形态标记（控制章节页覆盖）
-        self.courseid = pick(('courseid',), ('courseid', 'courseId'))
-        self.clazzid = pick(('clazzid',), ('clazzid', 'clazzId'))
-        self.cpi = pick(('cpi',), ('cpi',), '')
-        ut = pick(('heardut',), ('ut',), 's')
-        t = pick(('t',), ('t',), str(int(time.time() * 1000)))
-        enc = pick(('enc',), ('enc',), '')
-        self.enc = pick(('oldenc',), ('enc',), enc)
-        self.openc = hidden('openc') or ''
-        self.exam_enc = hidden('examenc') or ''
+        legacy_page = (
+            hidden("courseid") is not None
+        )  # 旧版隐藏域形态标记（控制章节页覆盖）
+        self.courseid = pick(("courseid",), ("courseid", "courseId"))
+        self.clazzid = pick(("clazzid",), ("clazzid", "clazzId"))
+        self.cpi = pick(("cpi",), ("cpi",), "")
+        ut = pick(("heardut",), ("ut",), "s")
+        t = pick(("t",), ("t",), str(int(time.time() * 1000)))
+        enc = pick(("enc",), ("enc",), "")
+        self.enc = pick(("oldenc",), ("enc",), enc)
+        self.openc = hidden("openc") or ""
+        self.exam_enc = hidden("examenc") or ""
         if not (self.courseid and self.clazzid):
             self.__dump_course_page_debug(meta_response)
-            raise RuntimeError('课程入口页解析失败：既没有 courseid/clazzid 隐藏域，'
-                               'URL 里也没有这两个参数（HTTP %s，最终地址 %s）。'
-                               '可能是风控未过，也可能是课程页又改版了'
-                               % (meta_response.status_code, meta_response.url))
+            raise RuntimeError(
+                "课程入口页解析失败：既没有 courseid/clazzid 隐藏域，"
+                "URL 里也没有这两个参数（HTTP %s，最终地址 %s）。"
+                "可能是风控未过，也可能是课程页又改版了"
+                % (meta_response.status_code, meta_response.url)
+            )
         params = {
-            'courseid': self.courseid,
-            'clazzid': self.clazzid,
-            'cpi': self.cpi,
-            'ut': ut,
-            't': t,
-            'stuenc': enc,
+            "courseid": self.courseid,
+            "clazzid": self.clazzid,
+            "cpi": self.cpi,
+            "ut": ut,
+            "t": t,
+            "stuenc": enc,
         }
         self._stu_params = params  # 留给 refresh_chapter_status 重拉章节树用
-        response = self.__risky_req('GET', course_url, params=params, headers=course_headers)
-        stu_soup = BeautifulSoup(response.content, 'html.parser')
+        response = self.__risky_req(
+            "GET", course_url, params=params, headers=course_headers
+        )
+        stu_soup = BeautifulSoup(response.content, "html.parser")
         # 章节页自己也带一套隐藏域（新版 id 是 courseId/clazzId/enc 驼峰）：
         # 仅当入口页是新版形态时以章节页同源值为准（旧版行为保持完全不变）
         if not legacy_page:
-            for el in stu_soup.find_all('input'):
-                eid = (el.get('id') or '').lower()
-                value = el.get('value')
+            for el in stu_soup.find_all("input"):
+                eid = (el.get("id") or "").lower()
+                value = el.get("value")
                 if not value:
                     continue
-                if eid == 'courseid':
+                if eid == "courseid":
                     self.courseid = value
-                elif eid == 'clazzid':
+                elif eid == "clazzid":
                     self.clazzid = value
-                elif eid == 'enc':
+                elif eid == "enc":
                     self.enc = value
-        if not stu_soup.select('div.chapter_item[id^=cur]'):
+        if not stu_soup.select("div.chapter_item[id^=cur]"):
             # 空课程（页面渲染「暂无章节内容」）是正常情况，其余才是真异常
-            if stu_soup.select_one('.nodata') is not None or '暂无章节内容' in stu_soup.get_text():
-                print('ℹ️ 该课程暂无章节内容')
+            if (
+                stu_soup.select_one(".nodata") is not None
+                or "暂无章节内容" in stu_soup.get_text()
+            ):
+                print("ℹ️ 该课程暂无章节内容")
             else:
-                print('⚠️ 章节页没解析到章节树（HTTP %s，%d 字节）：可能是风控或未适配的页面改版'
-                      % (response.status_code, len(response.content)))
+                print(
+                    "⚠️ 章节页没解析到章节树（HTTP %s，%d 字节）：可能是风控或未适配的页面改版"
+                    % (response.status_code, len(response.content))
+                )
         return response
 
     def get_capter_list(self, response):
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, "html.parser")
         self.capter_list = []  # refresh 重拉时重填，避免重复累加
         # 章节树每项（div.chapter_item[id^=cur]）自带全部信息：
         # id=cur+章节id、.clicktitle=章节名、input.knowledgeJobCount=待完成任务点数
@@ -472,16 +519,20 @@ class ChaoXing:
         # 头部 .chapter_head 带课程总进度「已完成任务点: x/y」
         self.chapter_status = {}
         self.chapter_done = set()
-        for div in soup.select('div.chapter_item[id^=cur]'):
-            cid = div.get('id')[len('cur'):]
-            name = div.select_one('.clicktitle').get_text()
-            self.capter_list.append((cid, re.sub(r'\s+', ' ', name).strip()))
-            cnt = div.select_one('input.knowledgeJobCount')
-            self.chapter_status[cid] = int(cnt.get('value')) if cnt else 0
-            if div.select_one('.catalog_state.icon_yiwanc') is not None:
+        for div in soup.select("div.chapter_item[id^=cur]"):
+            cid = div.get("id")[len("cur") :]
+            name = div.select_one(".clicktitle").get_text()
+            self.capter_list.append((cid, re.sub(r"\s+", " ", name).strip()))
+            cnt = div.select_one("input.knowledgeJobCount")
+            self.chapter_status[cid] = int(cnt.get("value")) if cnt else 0
+            if div.select_one(".catalog_state.icon_yiwanc") is not None:
                 self.chapter_done.add(cid)
-        head = soup.select_one('.chapter_head')
-        m = re.search(r'已完成任务点\D*(\d+)\s*/\s*(\d+)', head.get_text()) if head else None
+        head = soup.select_one(".chapter_head")
+        m = (
+            re.search(r"已完成任务点\D*(\d+)\s*/\s*(\d+)", head.get_text())
+            if head
+            else None
+        )
         self.course_pts = (int(m.group(1)), int(m.group(2))) if m else None
 
     # 重拉章节树（studentcourse 页），刷新每章待完成数和课程总进度（刷完一章后调用）
@@ -489,59 +540,90 @@ class ChaoXing:
         if self._stu_params is None:
             return
         params = dict(self._stu_params, t=str(int(time.time() * 1000)))
-        response = self.__risky_req('GET',
-                                    'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse',
-                                    params=params)
+        response = self.__risky_req(
+            "GET",
+            "https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse",
+            params=params,
+        )
         self.get_capter_list(response)
 
     # 6、章节页获取源数据（studentstudy -> cards，cards 页面里带 mArg 任务数据）
     # num 是卡序号：一个章节可能多卡（如 num=0 视频卡、num=1 测验卡），每卡一份 mArg
     # 请求过快会触发 9010 图片验证码风控（202 + 提示页面），自动过码后重试
     def __get_task_meta(self, task_id, num=0):
-        task_url = 'https://mooc1.chaoxing.com/mycourse/studentstudy'
+        task_url = "https://mooc1.chaoxing.com/mycourse/studentstudy"
         params = {
-            'chapterId': task_id,
-            'courseId': self.courseid,
-            'clazzid': self.clazzid,
-            'cpi': self.cpi,
-            'enc': self.enc,
-            'mooc2': '1',
-            'hidetype': '0',
-            'openc': self.openc,
+            "chapterId": task_id,
+            "courseId": self.courseid,
+            "clazzid": self.clazzid,
+            "cpi": self.cpi,
+            "enc": self.enc,
+            "mooc2": "1",
+            "hidetype": "0",
+            "openc": self.openc,
         }
         cards_url = None
         for _ in range(3):
             self.session.get(task_url, params=params)
             time.sleep(0.5)  # 请求节流：studentstudy+cards 零间隔连发会触发9010风控
-            cards_url = cards_url or self.get_cards_url(clazzid=self.clazzid, courseid=self.courseid,
-                                                        knowledgeid=task_id, cpi=self.cpi, num=num)
+            cards_url = cards_url or self.get_cards_url(
+                clazzid=self.clazzid,
+                courseid=self.courseid,
+                knowledgeid=task_id,
+                cpi=self.cpi,
+                num=num,
+            )
             response = self.session.get(cards_url)
-            if response.status_code != 202 and '9010' not in response.text:
+            if not self.__is_risky_response(response):
                 return response
-            print('🛡️ 触发超星风控(9010)，自动过验证码...')
+            print("🛡️ 触发超星风控(9010)，自动过验证码...")
             if self.__verify_captcha():  # 内部等待窗口期直到真正过码/解除，🛡️只提示一次
                 continue
             return response  # 过码失败，返回被拦的响应
         return response
+
+    # 9010 风控拦截判定：只认强特征，不再裸判 "9010" 子串。
+    #   1) HTTP 202：超星风控拦截的标准状态码（正常业务页/接口实测都是 200）；
+    #   2) 正文带验证码提交入口 processVerify 或滑块 captchaId：9010 拦截页独有，
+    #      正常页（space/index、课程页、章节页）实测都不含；
+    #   3) 明确的错误码形态（code/status/msg 后紧跟 9010）。
+    # 以前 `"9010" in response.text` 一刀切：正常页面里的资源版本号/课程 id/
+    # 时间戳常含这串数字，会被误判成风控 —— 然后去拉验证码图 404、判「风控已
+    # 自行解除」、重发又命中 9010，终端上就成了「一直循环说风控又自行解除」。
+    @staticmethod
+    def __is_risky_response(response):
+        text = response.text or ""
+        if response.status_code == 202:
+            return True
+        if "processVerify" in text:
+            return True
+        if re.search(r'captchaId["\'\s=:]+([a-f0-9]{16,})', text, re.I):
+            return True
+        return bool(re.search(
+            r'(?:error_?code|err_?code|["\']code["\']|["\']status["\']|["\']msg["\'])'
+            r'["\'\s:=]+[^,}]{0,24}9010', text, re.I))
 
     # 9010 拦截响应的验证码类型探测与过码分派：滑块强特征（captchaId/滑块关键词）
     # 走纯协议滑块过验（复用考试入口的 __slide_captcha_validate，拿到 captchaId 才能过），
     # 图形码/无特征走图形 OCR 过码；类型每次打印出来——以前只会「验证码未就绪」干等，
     # 看不出这次风控到底是滑块还是图形码
     def __resolve_9010(self, response):
-        text = response.text or ''
+        text = response.text or ""
         cm = re.search(r'captchaId["\'\s=:]+([a-f0-9]{16,})', text, re.I)
-        if cm or re.search(r'滑块|slider|cxcaptcha|geetest', text, re.I):
-            print('🛡️ 风控验证码类型：滑块')
+        if cm or re.search(r"滑块|slider|cxcaptcha|geetest", text, re.I):
+            print("🛡️ 风控验证码类型：滑块")
             if cm:
-                return bool(self.__slide_captcha_validate(
-                    cm.group(1), 'https://mooc1.chaoxing.com/'))
-            print('🛡️ 拦截页未带 captchaId，无法协议过滑块')
+                return bool(
+                    self.__slide_captcha_validate(
+                        cm.group(1), "https://mooc1.chaoxing.com/"
+                    )
+                )
+            print("🛡️ 拦截页未带 captchaId，无法协议过滑块")
             return False
-        if re.search(r'processVerify', text, re.I):
-            print('🛡️ 风控验证码类型：图形验证码')
+        if re.search(r"processVerify", text, re.I):
+            print("🛡️ 风控验证码类型：图形验证码")
         else:
-            print('🛡️ 风控验证码类型：未知，按图形验证码处理')
+            print("🛡️ 风控验证码类型：未知，按图形验证码处理")
         return self.__verify_captcha()
 
     # 刷课中途的9010自愈请求：心跳/提交等关键请求被拦(202/9010)时过码后自动重发，
@@ -558,16 +640,18 @@ class ChaoXing:
             except requests.exceptions.RequestException as e:
                 if attempt == 2:
                     raise
-                print('⚠️ 网络异常 %s（第 %d/3 次），%d秒后重发' % (
-                    type(e).__name__, attempt + 1, 2 * (attempt + 1)))
+                print(
+                    "⚠️ 网络异常 %s（第 %d/3 次），%d秒后重发"
+                    % (type(e).__name__, attempt + 1, 2 * (attempt + 1))
+                )
                 time.sleep(2 * (attempt + 1))
 
     def __risky_req(self, method, url, **kw):
         response = self.__req_with_retry(method, url, **kw)
         for _ in range(3):
-            if response.status_code != 202 and '9010' not in response.text:
+            if not self.__is_risky_response(response):
                 return response
-            print('🛡️ 触发超星风控(9010)，自动过验证码...')
+            print("🛡️ 触发超星风控(9010)，自动过验证码...")
             if not self.__resolve_9010(response):
                 return response  # 过码失败，返回被拦响应
             response = self.__req_with_retry(method, url, **kw)
@@ -579,58 +663,73 @@ class ChaoXing:
     #   - 拉图404：连续4次判定风控已解除；否则等1秒继续拉（窗口期）
     #   - 识别不足4位：换图重拉
     def __verify_captcha(self):
-        headers = {'Referer': 'https://mooc1.chaoxing.com/mooc-ans/knowledge/cards'}
+        headers = {"Referer": "https://mooc1.chaoxing.com/mooc-ans/knowledge/cards"}
         miss = 0
         for _ in range(20):
-            png = self.session.get('https://mooc1.chaoxing.com/processVerifyPng.ac',
-                                   params={'t': random.random() * 2147483647}, headers=headers)
-            if png.status_code == 404:  # 非风控态该接口404；窗口期也404，连续多次才算解除
+            png = self.session.get(
+                "https://mooc1.chaoxing.com/processVerifyPng.ac",
+                params={"t": random.random() * 2147483647},
+                headers=headers,
+            )
+            if (
+                png.status_code == 404
+            ):  # 非风控态该接口404；窗口期也404，连续多次才算解除
                 miss += 1
                 if miss >= 4:
-                    print('✅ 连续4次无验证码图，风控已自行解除（未过码，无识别环节）')
+                    # 图 404 只说明「现在拿不到验证码图」，不等于风控已解除
+                    # （真风控时图片接口也可能未就绪/抖动），交给调用方重发原请求
+                    # 验证：重发成功自然结束，仍被拦会再次进过码
+                    print("⏳ 验证码图持续未就绪，先重发原请求验证风控状态")
                     return True
-                print('⏳ 验证码图未就绪(404)，第%d/4次确认风控是否解除...' % miss)
+                print("⏳ 验证码图未就绪(404)，第%d/4次确认..." % miss)
                 time.sleep(1)
                 continue
             miss = 0
             try:
                 code = self.__ocr_read(png.content)
             except Exception:
-                code = ''
+                code = ""
             if len(code) != 4:
-                print('❌ 验证码识别失败，换图重试')
+                print("❌ 验证码识别失败，换图重试")
                 time.sleep(0.5)
                 continue
-            print('🔎 OCR识别：%s' % code)
-            self.session.post('https://mooc1.chaoxing.com/html/processVerify.ac',
-                              data={'app': '0', 'ucode': code}, headers=headers)
-            print('✅ 验证码已提交')
+            print("🔎 OCR识别：%s" % code)
+            self.session.post(
+                "https://mooc1.chaoxing.com/html/processVerify.ac",
+                data={"app": "0", "ucode": code},
+                headers=headers,
+            )
+            print("✅ 验证码已提交")
             time.sleep(0.5)
             # 复查：还能拉到验证码图说明仍在风控态，继续下一轮
-            check = self.session.get('https://mooc1.chaoxing.com/processVerifyPng.ac',
-                                     params={'t': random.random() * 2147483647}, headers=headers)
+            check = self.session.get(
+                "https://mooc1.chaoxing.com/processVerifyPng.ac",
+                params={"t": random.random() * 2147483647},
+                headers=headers,
+            )
             if check.status_code == 404:
-                print('✅ 验证码通过，风控已解除')
+                print("✅ 验证码通过，风控已解除")
                 return True
-            print('⏳ 提交未生效，仍在风控，重试')
-        print('❌ 验证码过码失败（重试20次未通过）')
+            print("⏳ 提交未生效，仍在风控，重试")
+        print("❌ 验证码过码失败（重试20次未通过）")
         return False
 
     # 验证码识别：直接用 ddddocr 识别原图（其内部自带灰度预处理，外挂二值化反而毁图，实测 raw 最准）
     def __ocr_read(self, img_bytes):
         if ChaoXing.__ocr is None:
             import ddddocr
+
             ChaoXing.__ocr = ddddocr.DdddOcr(show_ad=False)
         prob = ChaoXing.__ocr.classification(img_bytes, probability=True)
-        return (prob.get('text') or '').strip()
+        return (prob.get("text") or "").strip()
 
     # 7、从 cards 页面源码里提取 mArg = {...} 任务数据（括号平衡截取，防止字符串里带花括号）
     @staticmethod
     def __parse_marg(html_content):
-        mark = 'mArg = {'
+        mark = "mArg = {"
         if mark not in html_content:
             return None
-        start = html_content.index(mark) + len('mArg = ') - 1
+        start = html_content.index(mark) + len("mArg = ") - 1
         depth = 0
         end = start
         in_str = False
@@ -639,7 +738,7 @@ class ChaoXing:
             if esc:
                 esc = False
                 continue
-            if c == '\\':
+            if c == "\\":
                 esc = True
                 continue
             if c == '"':
@@ -647,9 +746,9 @@ class ChaoXing:
                 continue
             if in_str:
                 continue
-            if c == '{':
+            if c == "{":
                 depth += 1
-            elif c == '}':
+            elif c == "}":
                 depth -= 1
                 if depth == 0:
                     end = i + 1
@@ -670,84 +769,108 @@ class ChaoXing:
                 continue
             miss = 0
             if defaults is None:
-                defaults = marg['defaults']
-            attachments.extend(marg['attachments'])
-        return {'defaults': defaults, 'attachments': attachments} if defaults else None
+                defaults = marg["defaults"]
+            attachments.extend(marg["attachments"])
+        return {"defaults": defaults, "attachments": attachments} if defaults else None
 
     # 9、视频状态接口，拿 dtoken（心跳上报路径要用）和视频时长
     def __get_video_status(self, objectid, fid):
-        status_url = f'https://mooc1.chaoxing.com/ananas/status/{objectid}'
+        status_url = f"https://mooc1.chaoxing.com/ananas/status/{objectid}"
         params = {
-            'k': fid,
-            'flag': 'normal',
-            'ro': '0',
-            '_dc': str(int(time.time() * 1000)),
+            "k": fid,
+            "flag": "normal",
+            "ro": "0",
+            "_dc": str(int(time.time() * 1000)),
         }
-        response = self.session.get(status_url, params=params, headers={
-            'Referer': self.VIDEO_REFERER,
-            'X-Requested-With': 'XMLHttpRequest',
-        })
+        response = self.session.get(
+            status_url,
+            params=params,
+            headers={
+                "Referer": self.VIDEO_REFERER,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
         return response.json()
 
     # 10、enc 签名：md5('[clazzId][userid][jobid][objectId][playingTime*1000][盐值][duration*1000][clipTime]')
     @staticmethod
-    def __make_enc(clazz_id, userid, jobid, object_id, playing_time, duration, clip_time):
-        s = '[%s][%s][%s][%s][%d][%s][%d][%s]' % (
-            clazz_id, userid, jobid, object_id, playing_time * 1000,
-            'd_yHJ!$pdA~5', duration * 1000, clip_time)
+    def __make_enc(
+        clazz_id, userid, jobid, object_id, playing_time, duration, clip_time
+    ):
+        s = "[%s][%s][%s][%s][%d][%s][%d][%s]" % (
+            clazz_id,
+            userid,
+            jobid,
+            object_id,
+            playing_time * 1000,
+            "d_yHJ!$pdA~5",
+            duration * 1000,
+            clip_time,
+        )
         return hashlib.md5(s.encode()).hexdigest()
 
     # 11、发一次心跳上报（reportUrl 是 mArg defaults 里返回的，末尾拼 dtoken 才是完整路径）
     def __send_log(self, attachment, defaults, dtoken, playing_time, isdrag):
-        duration = int(attachment['attDuration'])
-        clip_time = '0_%d' % duration
-        enc = self.__make_enc(defaults['clazzId'], defaults['userid'], attachment['jobid'],
-                              attachment['objectId'], playing_time, duration, clip_time)
-        url = '%s/%s' % (defaults['reportUrl'], dtoken)
+        duration = int(attachment["attDuration"])
+        clip_time = "0_%d" % duration
+        enc = self.__make_enc(
+            defaults["clazzId"],
+            defaults["userid"],
+            attachment["jobid"],
+            attachment["objectId"],
+            playing_time,
+            duration,
+            clip_time,
+        )
+        url = "%s/%s" % (defaults["reportUrl"], dtoken)
         # otherInfo 原生以裸 & 接在 URL 上，服务端按第一个 & 截断取值；
         # courseId 必须只出现一次（独立参数），URL 里参数重复会被直接 403
         params = {
-            'clazzId': defaults['clazzId'],
-            'playingTime': playing_time,
-            'duration': duration,
-            'clipTime': clip_time,
-            'objectId': attachment['objectId'],
-            'otherInfo': attachment['otherInfo'].split('&')[0],
-            'courseId': defaults['courseid'],
-            'jobid': attachment['jobid'],
-            'userid': defaults['userid'],
-            'isdrag': isdrag,
-            'view': 'pc',
-            'enc': enc,
-            'rt': '0.9',
-            'videoFaceCaptureEnc': attachment.get('videoFaceCaptureEnc', ''),
-            'dtype': 'Video',
-            '_t': str(int(time.time() * 1000)),
-            'attDuration': duration,
-            'attDurationEnc': attachment.get('attDurationEnc', ''),
-            'courseEngineInfo': 'false',
+            "clazzId": defaults["clazzId"],
+            "playingTime": playing_time,
+            "duration": duration,
+            "clipTime": clip_time,
+            "objectId": attachment["objectId"],
+            "otherInfo": attachment["otherInfo"].split("&")[0],
+            "courseId": defaults["courseid"],
+            "jobid": attachment["jobid"],
+            "userid": defaults["userid"],
+            "isdrag": isdrag,
+            "view": "pc",
+            "enc": enc,
+            "rt": "0.9",
+            "videoFaceCaptureEnc": attachment.get("videoFaceCaptureEnc", ""),
+            "dtype": "Video",
+            "_t": str(int(time.time() * 1000)),
+            "attDuration": duration,
+            "attDurationEnc": attachment.get("attDurationEnc", ""),
+            "courseEngineInfo": "false",
         }
         # 手工拼 query：otherInfo 原样输出（与原生一致），其余参数照常转义
-        query = '&'.join(
-            '%s=%s' % (key, value if key == 'otherInfo' else quote(str(value), safe=''))
+        query = "&".join(
+            "%s=%s" % (key, value if key == "otherInfo" else quote(str(value), safe=""))
             for key, value in params.items()
         )
         try:
-            response = self.__risky_req('GET', '%s?%s' % (url, query), headers={
-                'Referer': self.VIDEO_REFERER,
-                'X-Requested-With': 'XMLHttpRequest',
-            })
+            response = self.__risky_req(
+                "GET",
+                "%s?%s" % (url, query),
+                headers={
+                    "Referer": self.VIDEO_REFERER,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            )
         except requests.exceptions.RequestException as e:
             # 重发仍断连：丢这一拍不致命，进度按时钟累积，60s 后下一拍把完整进度补上
-            print('   ⚠️ 心跳上报网络异常: %s' % type(e).__name__)
+            print("   ⚠️ 心跳上报网络异常: %s" % type(e).__name__)
             return {}
         if response.status_code != 200:
-            print('心跳上报异常:', response.status_code)
+            print("心跳上报异常:", response.status_code)
             return {}
         try:
             return response.json()
         except ValueError:
-            print('心跳上报响应非JSON:', response.text[:120])
+            print("心跳上报响应非JSON:", response.text[:120])
             return {}
 
     # 12、刷完一个视频：isdrag=3 起始上报 -> isdrag=2 每60秒进度上报 -> isdrag=4 结束上报（isPassed 的开关在这里）
@@ -755,16 +878,18 @@ class ChaoXing:
     # 所以这里必须按 1 倍速真实时间挂机，节奏与原生播放器 reportTimeInterval=60 一致
     def __finish_one_video(self, attachment, defaults):
         title = self.__att_title(attachment)
-        duration = int(attachment['attDuration'])
-        print('📺%s 开始观看 %s' % (title, self.__fmt_dur(duration)))
-        status = self.__get_video_status(attachment['objectId'], defaults.get('fid') or self.fid)
-        dtoken = status['dtoken']
+        duration = int(attachment["attDuration"])
+        print("📺%s 开始观看 %s" % (title, self.__fmt_dur(duration)))
+        status = self.__get_video_status(
+            attachment["objectId"], defaults.get("fid") or self.fid
+        )
+        dtoken = status["dtoken"]
         # 从服务端记录的播放位置续播（playTime 是毫秒）；已到片尾说明上次没判过，从头再来
-        played_from = int(status.get('playTime') or 0) // 1000
+        played_from = int(status.get("playTime") or 0) // 1000
         if played_from >= duration:
             played_from = 0
         if played_from:
-            print('   📺%s 从 %s 处续播' % (title, self.__fmt_dur(played_from)))
+            print("   📺%s 从 %s 处续播" % (title, self.__fmt_dur(played_from)))
 
         self.__send_log(attachment, defaults, dtoken, played_from, 3)
 
@@ -774,24 +899,34 @@ class ChaoXing:
         report_interval = 60
         start_real = time.time()
         last_reported = played_from
-        print('   📺%s 观看中 %s / %s' % (
-            title, self.__fmt_dur(played_from), self.__fmt_dur(duration)))
+        print(
+            "   📺%s 观看中 %s / %s"
+            % (title, self.__fmt_dur(played_from), self.__fmt_dur(duration))
+        )
         while True:
             time.sleep(1)
             playing = min(played_from + int(time.time() - start_real), duration)
             if playing >= duration:
-                print('   📺%s 观看中 %s / %s' % (
-                    title, self.__fmt_dur(duration), self.__fmt_dur(duration)))
+                print(
+                    "   📺%s 观看中 %s / %s"
+                    % (title, self.__fmt_dur(duration), self.__fmt_dur(duration))
+                )
                 break
             if playing - last_reported >= report_interval:
-                print('   📺%s 观看中 %s / %s' % (
-                    title, self.__fmt_dur(playing), self.__fmt_dur(duration)))
+                print(
+                    "   📺%s 观看中 %s / %s"
+                    % (title, self.__fmt_dur(playing), self.__fmt_dur(duration))
+                )
                 self.__send_log(attachment, defaults, dtoken, playing, 2)
                 last_reported = playing
         resp = self.__send_log(attachment, defaults, dtoken, duration, 4)
 
-        passed = resp.get('isPassed', False) if isinstance(resp, dict) else False
-        print('✅📺%s 观看完成' % title if passed else '❌📺%s 观看失败: %s' % (title, resp))
+        passed = resp.get("isPassed", False) if isinstance(resp, dict) else False
+        print(
+            "✅📺%s 观看完成" % title
+            if passed
+            else "❌📺%s 观看失败: %s" % (title, resp)
+        )
         if passed:
             # 实时任务点：每刷完一个+1并即时输出总进度条（章节末服务端刷新会再校正）
             self.pts_done = min(self.pts_done + 1, self.pts_all)
@@ -802,16 +937,20 @@ class ChaoXing:
     def finish_video(self, task_id):
         marg = self.__get_marg(task_id)
         if marg is None:
-            print('没有任务数据，跳过')
+            print("没有任务数据，跳过")
             return False
 
-        defaults = marg['defaults']
+        defaults = marg["defaults"]
         jobs = []
-        for attachment in marg['attachments']:
+        for attachment in marg["attachments"]:
             # 只要视频任务（有 jobid/objectId/attDuration 的才是）
-            if 'jobid' not in attachment or 'objectId' not in attachment or 'attDuration' not in attachment:
+            if (
+                "jobid" not in attachment
+                or "objectId" not in attachment
+                or "attDuration" not in attachment
+            ):
                 continue
-            if attachment.get('isPassed'):
+            if attachment.get("isPassed"):
                 continue
             jobs.append(attachment)
         passed_list = []
@@ -821,8 +960,10 @@ class ChaoXing:
             try:
                 passed_list.append(self.__finish_one_video(attachment, defaults))
             except Exception as e:
-                print('❌📺%s 异常中断: %s: %s' % (
-                    self.__att_title(attachment), type(e).__name__, e))
+                print(
+                    "❌📺%s 异常中断: %s: %s"
+                    % (self.__att_title(attachment), type(e).__name__, e)
+                )
                 passed_list.append(False)
         return all(passed_list) if passed_list else False
 
@@ -832,15 +973,15 @@ class ChaoXing:
     def __split_tasks(marg):
         vids, docs, quizzes = [], [], []
         if marg is not None:
-            for a in marg['attachments']:
-                if 'jobid' not in a:
+            for a in marg["attachments"]:
+                if "jobid" not in a:
                     continue
-                t = a.get('type')
-                if t == 'video' or 'attDuration' in a:
+                t = a.get("type")
+                if t == "video" or "attDuration" in a:
                     vids.append(a)
-                elif t == 'document':
+                elif t == "document":
                     docs.append(a)
-                elif t == 'workid':
+                elif t == "workid":
                     quizzes.append(a)
         return vids, docs, quizzes
 
@@ -848,16 +989,21 @@ class ChaoXing:
     # 去掉扩展名；无则空串，前导空格便于直接拼接
     @staticmethod
     def __att_title(a):
-        prop = a.get('property')
+        prop = a.get("property")
         if isinstance(prop, str):
             try:
                 prop = json.loads(prop)
             except ValueError:
                 prop = {}
-        name = ((prop or {}).get('name') or (prop or {}).get('title') or '').strip()
+        name = ((prop or {}).get("name") or (prop or {}).get("title") or "").strip()
         if name:
-            name = re.sub(r'\.(mp4|avi|mkv|flv|wmv|pdf|ppt|pptx|doc|docx|xls|xlsx)$', '', name, flags=re.I)
-        return ' 《%s》' % name if name else ''
+            name = re.sub(
+                r"\.(mp4|avi|mkv|flv|wmv|pdf|ppt|pptx|doc|docx|xls|xlsx)$",
+                "",
+                name,
+                flags=re.I,
+            )
+        return " 《%s》" % name if name else ""
 
     # 任务清单：只列待完成的任务，每个一行（emoji+标题），标题取不到就只显示类型；
     # 过滤口径与 main 的 pending 判定一致：视频 isPassed 未过、文档/作业 job=True，mode 决定列哪些类型
@@ -865,32 +1011,32 @@ class ChaoXing:
     @classmethod
     def __task_list_line(cls, vids, docs, quizzes, mode):
         lines = []
-        if mode in ('all', 'watch', 'course'):
+        if mode in ("all", "watch", "course"):
             for a in vids:
-                if not a.get('isPassed'):
-                    lines.append('      📺%s' % cls.__att_title(a))
+                if not a.get("isPassed"):
+                    lines.append("      📺%s" % cls.__att_title(a))
             for a in docs:
-                if a.get('job') is True:
-                    lines.append('      📄%s' % cls.__att_title(a))
-        if mode in ('all', 'test', 'course'):
+                if a.get("job") is True:
+                    lines.append("      📄%s" % cls.__att_title(a))
+        if mode in ("all", "test", "course"):
             for a in quizzes:
-                if a.get('job') is True:
-                    lines.append('      📝%s' % cls.__att_title(a))
-        return '\n'.join(lines)
+                if a.get("job") is True:
+                    lines.append("      📝%s" % cls.__att_title(a))
+        return "\n".join(lines)
 
     # 秒 → m:ss
     @staticmethod
     def __fmt_dur(sec):
-        return '%d:%02d' % (sec // 60, sec % 60)
+        return "%d:%02d" % (sec // 60, sec % 60)
 
     # 总进度条（UI 输出用）
     @staticmethod
-    def __progress_bar(done, total, bar_len=30, label='🔴 任务点'):
+    def __progress_bar(done, total, bar_len=30, label="🔴 任务点"):
         if total == 0:
-            return '📊 %s: 0/0' % label
+            return "📊 %s: 0/0" % label
         filled = bar_len * done // total
-        bar = '█' * filled + '░' * (bar_len - filled)
-        return '📊 %s: %d/%d %s %d%%' % (label, done, total, bar, done * 100 // total)
+        bar = "█" * filled + "░" * (bar_len - filled)
+        return "📊 %s: %d/%d %s %d%%" % (label, done, total, bar, done * 100 // total)
 
     # 15、刷完一个章节内的所有文档任务：对每个未完成(job=true)的文档调一次完成接口
     # 网页端滚动到底部触发的 finishJob 就是这一个请求，服务端只认它，不校验真实阅读时长
@@ -899,45 +1045,49 @@ class ChaoXing:
     def finish_document(self, task_id):
         marg = self.__get_marg(task_id)
         if marg is None:
-            print('没有任务数据，跳过')
+            print("没有任务数据，跳过")
             return False
 
-        defaults = marg['defaults']
+        defaults = marg["defaults"]
         ok_list = []
-        for attachment in marg['attachments']:
-            if attachment.get('type') != 'document' or 'jobid' not in attachment:
+        for attachment in marg["attachments"]:
+            if attachment.get("type") != "document" or "jobid" not in attachment:
                 continue
-            if attachment.get('job') is not True:
+            if attachment.get("job") is not True:
                 continue
             title = self.__att_title(attachment)
-            print('📄%s 开始完成' % title)
+            print("📄%s 开始完成" % title)
             params = {
-                'jobid': attachment['jobid'],
-                'knowledgeid': defaults['knowledgeid'],
-                'courseid': defaults['courseid'],
-                'clazzid': defaults['clazzId'],
-                'jtoken': attachment['jtoken'],
-                'checkMicroTopic': 'true',
-                'microTopicId': '',
-                'courseEngineInfo': 'false',
+                "jobid": attachment["jobid"],
+                "knowledgeid": defaults["knowledgeid"],
+                "courseid": defaults["courseid"],
+                "clazzid": defaults["clazzId"],
+                "jtoken": attachment["jtoken"],
+                "checkMicroTopic": "true",
+                "microTopicId": "",
+                "courseEngineInfo": "false",
             }
-            response = self.__risky_req('GET', 'https://mooc1.chaoxing.com/mooc-ans/job/document', params=params,
-                                        headers={
-                                            'Referer': 'https://mooc1.chaoxing.com/ananas/modules/pdf/index.html?v=2026-0826-1905',
-                                            'X-Requested-With': 'XMLHttpRequest',
-                                        })
+            response = self.__risky_req(
+                "GET",
+                "https://mooc1.chaoxing.com/mooc-ans/job/document",
+                params=params,
+                headers={
+                    "Referer": "https://mooc1.chaoxing.com/ananas/modules/pdf/index.html?v=2026-0826-1905",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            )
             try:
                 resp = response.json()
             except ValueError:
                 resp = {}
-            done = response.status_code == 200 and resp.get('status') is True
+            done = response.status_code == 200 and resp.get("status") is True
             if done:
-                print('✅📄%s %s' % (title, resp.get('msg', '')))
+                print("✅📄%s %s" % (title, resp.get("msg", "")))
                 # 实时任务点：每完成一个+1并即时输出总进度条
                 self.pts_done = min(self.pts_done + 1, self.pts_all)
                 print(self.__progress_bar(self.pts_done, self.pts_all))
             else:
-                print('❌📄%s %s' % (title, response.text[:200]))
+                print("❌📄%s %s" % (title, response.text[:200]))
             ok_list.append(done)
         return all(ok_list) if ok_list else False
 
@@ -950,20 +1100,23 @@ class ChaoXing:
     # 旧逻辑（首个大段 base64）作兜底
     @staticmethod
     def __extract_secret_font(html):
-        m = re.search(r'data:application/(?:font-ttf|x-font-ttf|font-woff2?|octet-stream)'
-                      r'(?:;[^,;]+)*;base64,([A-Za-z0-9+/=]+)', html)
+        m = re.search(
+            r"data:application/(?:font-ttf|x-font-ttf|font-woff2?|octet-stream)"
+            r"(?:;[^,;]+)*;base64,([A-Za-z0-9+/=]+)",
+            html,
+        )
         if m:
             return base64.b64decode(m.group(1))
-        m = re.search(r'base64,([A-Za-z0-9+/=]{1000,})', html)
+        m = re.search(r"base64,([A-Za-z0-9+/=]{1000,})", html)
         return base64.b64decode(m.group(1)) if m else None
 
     # 17、基准字体（思源黑体 CN Normal）：本地没有就下载
     def __ensure_base_font(self):
         if not os.path.exists(self.CXSECRET_BASE_FONT):
             os.makedirs(os.path.dirname(self.CXSECRET_BASE_FONT), exist_ok=True)
-            print('🔤 下载基准字体 思源黑体 CN Normal...')
+            print("🔤 下载基准字体 思源黑体 CN Normal...")
             r = self.session.get(self.CXSECRET_BASE_FONT_URL, timeout=120)
-            with open(self.CXSECRET_BASE_FONT, 'wb') as f:
+            with open(self.CXSECRET_BASE_FONT, "wb") as f:
                 f.write(r.content)
         return self.CXSECRET_BASE_FONT
 
@@ -974,7 +1127,7 @@ class ChaoXing:
     @staticmethod
     def __char_rank(ch):
         try:
-            b = ch.encode('gb2312')
+            b = ch.encode("gb2312")
         except UnicodeEncodeError:
             return 2
         return 0 if 16 <= b[0] - 0xA0 <= 55 else 1
@@ -990,12 +1143,22 @@ class ChaoXing:
     __POPCOUNT = None
 
     @classmethod
-    def __auto_match_secret(cls, font_bytes, base_font_path, px=100, grid=128,
-                            fine_px=200, fine_grid=256, topk=6, fine_margin=0.03):
+    def __auto_match_secret(
+        cls,
+        font_bytes,
+        base_font_path,
+        px=100,
+        grid=128,
+        fine_px=200,
+        fine_grid=256,
+        topk=6,
+        fine_margin=0.03,
+    ):
         def render(font, code, size):
-            img = Image.new('L', (size * 3, size * 3), 0)
-            ImageDraw.Draw(img).text((size * 1.5, size * 1.5), chr(code),
-                                     font=font, fill=255, anchor='mm')
+            img = Image.new("L", (size * 3, size * 3), 0)
+            ImageDraw.Draw(img).text(
+                (size * 1.5, size * 1.5), chr(code), font=font, fill=255, anchor="mm"
+            )
             return img
 
         def glyph_arr(font, code, size=px, g=grid):
@@ -1006,7 +1169,7 @@ class ChaoXing:
             crop = img.crop(box)
             w, h = crop.size
             side = max(w, h)
-            canvas = Image.new('L', (side, side), 0)
+            canvas = Image.new("L", (side, side), 0)
             canvas.paste(crop, ((side - w) // 2, (side - h) // 2))
             return np.array(canvas.resize((g, g)), dtype=np.uint8) > 100
 
@@ -1014,7 +1177,9 @@ class ChaoXing:
             union = (a | b).sum()
             return float((a & b).sum()) / float(union) if union else 0.0
 
-        secret_codes = [c for c in TTFont(io.BytesIO(font_bytes)).getBestCmap() if c >= 0x3400]
+        secret_codes = [
+            c for c in TTFont(io.BytesIO(font_bytes)).getBestCmap() if c >= 0x3400
+        ]
         sfont = ImageFont.truetype(io.BytesIO(font_bytes), px)
         secrets = {}
         for code in secret_codes:
@@ -1023,7 +1188,9 @@ class ChaoXing:
                 secrets[code] = arr
 
         if cls.__POPCOUNT is None:
-            cls.__POPCOUNT = np.array([bin(i).count('1') for i in range(256)], dtype=np.uint8)
+            cls.__POPCOUNT = np.array(
+                [bin(i).count("1") for i in range(256)], dtype=np.uint8
+            )
         key = (str(base_font_path), px, grid)
         if cls.__BASE_GLYPH_CACHE is None or cls.__BASE_GLYPH_CACHE[0] != key:
             bfont = ImageFont.truetype(base_font_path, px)
@@ -1037,8 +1204,12 @@ class ChaoXing:
                 codes.append(code)
                 packs.append(np.packbits(arr.reshape(-1)))
                 counts.append(float(arr.sum()))
-            cls.__BASE_GLYPH_CACHE = (key, np.array(codes), np.array(packs, dtype=np.uint8),
-                                      np.array(counts, dtype=np.float64))
+            cls.__BASE_GLYPH_CACHE = (
+                key,
+                np.array(codes),
+                np.array(packs, dtype=np.uint8),
+                np.array(counts, dtype=np.float64),
+            )
         _key, bcodes, bpacks, bcounts = cls.__BASE_GLYPH_CACHE
         # 精排要密字/基准字用同一分辨率的字体对象渲染，否则密字是低分辨率放大图，
         # 细节被抹平（实测会把「刺」判成「剌」）
@@ -1053,7 +1224,11 @@ class ChaoXing:
             ious = np.empty(len(bcodes), dtype=np.float64)
             for s0 in range(0, len(bcodes), step):
                 e = min(s0 + step, len(bcodes))
-                inter = cls.__POPCOUNT[np.bitwise_and(bpacks[s0:e], sp)].sum(axis=1).astype(np.float64)
+                inter = (
+                    cls.__POPCOUNT[np.bitwise_and(bpacks[s0:e], sp)]
+                    .sum(axis=1)
+                    .astype(np.float64)
+                )
                 union = bcounts[s0:e] + sc - inter
                 blk = np.zeros_like(inter)
                 np.divide(inter, np.maximum(union, 1e-9), out=blk, where=union > 0)
@@ -1076,8 +1251,13 @@ class ChaoXing:
                     # 并列（差距 <= fine_margin）时按常用度定夺，其次才比精排分数
                     top_v = max(v for v, _j in scored)
                     near = [(v, j) for v, j in scored if top_v - v <= fine_margin]
-                    near.sort(key=lambda t: (cls.__char_rank(chr(int(bcodes[t[1]]))),
-                                             -t[0], t[1]))
+                    near.sort(
+                        key=lambda t: (
+                            cls.__char_rank(chr(int(bcodes[t[1]]))),
+                            -t[0],
+                            t[1],
+                        )
+                    )
                     best_v, best_i = near[0]
             if best_v > 0:
                 mapping[chr(code)] = chr(int(bcodes[best_i]))
@@ -1086,7 +1266,7 @@ class ChaoXing:
     # 19、建立密文映射：题面内嵌字体每次拉取都是随机新生成的（同一份作业两次抓取
     # 的字体 md5 都不同），按字体缓存永远命不中，直接对当前字体现场字形比对
     def __build_secret_map(self, font_bytes):
-        print('🔤 字形比对中（约 1 分钟）...')
+        print("🔤 字形比对中（约 1 分钟）...")
         return self.__auto_match_secret(font_bytes, self.__ensure_base_font())
 
     # 20、密文文本解码：映射表内的码位替换成真字，表外原样保留
@@ -1094,77 +1274,93 @@ class ChaoXing:
     def __decode_cxsecret(text, mapping):
         if not mapping:
             return text
-        return ''.join(mapping.get(c, c) for c in text)
+        return "".join(mapping.get(c, c) for c in text)
 
     # ---------- 章节测验（答题） ----------
 
     # 21、拉题面：api/work 会 302 到 doHomeWorkNew 题面页，返回 (HTML, 最终URL)
     def __fetch_quiz_html(self, att, defaults):
         params = {
-            'api': '1',
-            'workId': att['property']['workid'],
-            'jobid': att['jobid'],
-            'originJobId': att['jobid'],
-            'needRedirect': 'true',
-            'skipHeader': 'true',
-            'knowledgeid': defaults['knowledgeid'],
-            'ktoken': defaults['ktoken'],
-            'cpi': defaults['cpi'],
-            'ut': 's',
-            'clazzId': defaults['clazzId'],
-            'type': '',
-            'enc': att['enc'],
-            'utenc': 'undefined',
-            'mooc2': '1',
-            'courseid': defaults['courseid'],
+            "api": "1",
+            "workId": att["property"]["workid"],
+            "jobid": att["jobid"],
+            "originJobId": att["jobid"],
+            "needRedirect": "true",
+            "skipHeader": "true",
+            "knowledgeid": defaults["knowledgeid"],
+            "ktoken": defaults["ktoken"],
+            "cpi": defaults["cpi"],
+            "ut": "s",
+            "clazzId": defaults["clazzId"],
+            "type": "",
+            "enc": att["enc"],
+            "utenc": "undefined",
+            "mooc2": "1",
+            "courseid": defaults["courseid"],
         }
-        r = self.__risky_req('GET', 'https://mooc1.chaoxing.com/mooc-ans/api/work', params=params)
+        r = self.__risky_req(
+            "GET", "https://mooc1.chaoxing.com/mooc-ans/api/work", params=params
+        )
         return r.text, r.url
 
     # 22、解析题面：每个 TiMu → {qid, qtype, answertype, stem, options:[(data, 文本)]}
     @classmethod
     def __parse_quiz(cls, html, mapping):
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         questions = []
-        for timu in soup.select('div.TiMu'):
-            title_el = timu.select_one('.Zy_TItle')
+        for timu in soup.select("div.TiMu"):
+            title_el = timu.select_one(".Zy_TItle")
             if title_el is None:
                 continue
-            stem = cls.__decode_cxsecret(title_el.get_text(' ', strip=True), mapping)
-            lis = timu.select('li[qid][qtype]')
+            stem = cls.__decode_cxsecret(title_el.get_text(" ", strip=True), mapping)
+            lis = timu.select("li[qid][qtype]")
             type_input = timu.select_one('input[name^="answertype"]')
             if not lis:
                 # 简答/填空类无选项题（题型 4）：没有 li[qid][qtype] 选项结构，qid 从
                 # answertype 输入框名字后缀拿，qtype 用其 value，options 留空走文本作答
-                m = re.match(r'answertype(\d+)$', type_input.get('name', '')) if type_input is not None else None
+                m = (
+                    re.match(r"answertype(\d+)$", type_input.get("name", ""))
+                    if type_input is not None
+                    else None
+                )
                 if m is None:
                     continue
-                questions.append({
-                    'qid': m.group(1),
-                    'qtype': type_input.get('value', ''),
-                    'answertype': type_input.get('value', ''),
-                    'stem': stem,
-                    'options': [],
-                })
+                questions.append(
+                    {
+                        "qid": m.group(1),
+                        "qtype": type_input.get("value", ""),
+                        "answertype": type_input.get("value", ""),
+                        "stem": stem,
+                        "options": [],
+                    }
+                )
                 continue
             options = []
             for li in lis:
-                span = li.select_one('span.num_option_dx, span.num_option')
-                data = span.get('data', '') if span is not None else ''
+                span = li.select_one("span.num_option_dx, span.num_option")
+                data = span.get("data", "") if span is not None else ""
                 if not data:
                     # 选项节点缺 data（题面结构变化）：无效选项丢弃；否则空 data 进 letters
                     # 会让 __ask_llm 里 [%s] 空集炸正则（unterminated character set）
                     continue
-                text_el = li.select_one('a.after')
-                text = text_el.get_text(' ', strip=True) if text_el is not None else li.get_text(' ', strip=True)
+                text_el = li.select_one("a.after")
+                text = (
+                    text_el.get_text(" ", strip=True)
+                    if text_el is not None
+                    else li.get_text(" ", strip=True)
+                )
                 options.append((data, cls.__decode_cxsecret(text, mapping)))
-            questions.append({
-                'qid': lis[0]['qid'],
-                'qtype': lis[0]['qtype'],
-                'answertype': type_input.get('value', '') if type_input is not None else '',
-                'stem': stem,
-                'options': options,
-            })
+            questions.append(
+                {
+                    "qid": lis[0]["qid"],
+                    "qtype": lis[0]["qtype"],
+                    "answertype": type_input.get("value", "")
+                    if type_input is not None
+                    else "",
+                    "stem": stem,
+                    "options": options,
+                }
+            )
         return questions
 
     # 23.0、答题模型与回退：LLM_MODELS 顺序即优先级（key 为空的项跳过）；
@@ -1173,116 +1369,137 @@ class ChaoXing:
     # 23、大模型答题：题面 prompt（题目+选项+历次错误答案）→ 回复 → 解析出选项 data 列表
     # 判断题统一用 A=对 B=错 喂给模型（true/false 当字母模型回答不稳定），解析后再映射回去；
     # 多选时附加题型说明；填空题（作业）答案放 ## 里，解析时从 ## 之间取
-    def __ask_llm(self, stem, options, wrong_answers=None, qtype='', type_name=''):
-        is_fill = '填空' in (type_name or '')
+    def __ask_llm(self, stem, options, wrong_answers=None, qtype="", type_name=""):
+        is_fill = "填空" in (type_name or "")
         # 简答题（无选项）不经这里：__do_quiz 里直接留空提交待批阅；填空题（无选项）走本函数
         if not options and not is_fill:
             # 客观题但选项全空（题面结构异常）：无选项可组提示词，本题留空返回；
             # 测验/考试/作业共用入口，必须防御（letters 空集曾炸 [%s] 正则）
-            print('   ⚠️ 选项未识别出有效 data，本题留空')
-            return [], ''
-        is_judge = any(d in ('true', 'false') for d, _ in options)
+            print("   ⚠️ 选项未识别出有效 data，本题留空")
+            return [], ""
+        is_judge = any(d in ("true", "false") for d, _ in options)
         lines = [stem]
         for d, t in options:
             if is_judge:
-                d = 'A' if d == 'true' else 'B'
-            lines.append('%s. %s' % (d, t))
+                d = "A" if d == "true" else "B"
+            lines.append("%s. %s" % (d, t))
         for w in wrong_answers or []:
-            w_show = ' '.join({'true': 'A', 'false': 'B'}.get(x, x) for x in w.split())
-            lines.append('答案 %s 不是正确的答案' % w_show)
-        theme = ('本题目主题是%s，请基于这个主题给我这道题正确选项的答案，'
-                 '如果遇到有争议的题目先排查错误选项再仔细思考选择正确的答案，'
-                 '若涉及政治方面问题需要联网搜索寻找权威答案不要瞎猜')
+            w_show = " ".join({"true": "A", "false": "B"}.get(x, x) for x in w.split())
+            lines.append("答案 %s 不是正确的答案" % w_show)
+        theme = (
+            "本题目主题是%s，请基于这个主题给我这道题正确选项的答案，"
+            "如果遇到有争议的题目先排查错误选项再仔细思考选择正确的答案，"
+            "若涉及政治方面问题需要联网搜索寻找权威答案不要瞎猜"
+        )
         if is_fill:
             # 填空题：答案放 ## 里（固定格式），解析时从 ## 之间取；两个注合并为一个
-            lines.append('注：本题为填空题！！！仅返回答案，请把答案放进##中，不需要讲解')
-            lines.append(theme % getattr(self, 'course_name', ''))
-            lines.append('格式：##你的答案##；若有多个空，按题目顺序每个空的答案'
-                         '分别用##包裹，一空一对##')
+            lines.append(
+                "注：本题为填空题！！！仅返回答案，请把答案放进##中，不需要讲解"
+            )
+            lines.append(theme % getattr(self, "course_name", ""))
+            lines.append(
+                "格式：##你的答案##；若有多个空，按题目顺序每个空的答案"
+                "分别用##包裹，一空一对##"
+            )
         else:
-            lines.append(theme % getattr(self, 'course_name', ''))
-            lines.append('注：仅返回英文字母选项即可，不需要讲解')
-        if not is_fill and (str(qtype) == '1' or '多选' in (type_name or '')):
-            lines.append('注：本题为多选题！！！')  # 单选/判断/填空不干扰模型
-        prompt = '\n'.join(lines)
-        if getattr(self, 'show_prompt', False):
-            print('   🤖 提示词：')
+            lines.append(theme % getattr(self, "course_name", ""))
+            lines.append("注：仅返回英文字母选项即可，不需要讲解")
+        if not is_fill and (str(qtype) == "1" or "多选" in (type_name or "")):
+            lines.append("注：本题为多选题！！！")  # 单选/判断/填空不干扰模型
+        prompt = "\n".join(lines)
+        if getattr(self, "show_prompt", False):
+            print("   🤖 提示词：")
             print(prompt)
         # 逐模型尝试：首选连续 3 次失败就换下一个模型重试本题——只影响本题，
         # 下一题仍从首选开始（失败多为偶发超时，不把整场连坐降级）
         timeout = 60
         reply = None
         for entry in type(self).LLM_MODELS:
-            model = entry['model']
-            if not entry.get('key'):
-                print('   ⚠️ 模型 %s 缺少API密钥，跳过' % model)
+            model = entry["model"]
+            if not entry.get("key"):
+                print("   ⚠️ 模型 %s 缺少API密钥，跳过" % model)
                 continue
-            print('   🤖 当前模型: %s' % model)
-            payload = {'model': model, 'temperature': 0.1,
-                       'messages': [{'role': 'user', 'content': prompt}]}
-            headers = {'Authorization': 'Bearer %s' % entry['key']}
+            print("   🤖 当前模型: %s" % model)
+            payload = {
+                "model": model,
+                "temperature": 0.1,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            headers = {"Authorization": "Bearer %s" % entry["key"]}
             r = None
             for attempt in range(3):
                 try:
-                    r = requests.post(entry['url'], json=payload, headers=headers, timeout=timeout)
+                    r = requests.post(
+                        entry["url"], json=payload, headers=headers, timeout=timeout
+                    )
                 except requests.RequestException as e:
                     r = None
-                    print('   ⚠️ 模型请求异常 %s（第 %d/3 次）' % (type(e).__name__, attempt + 1))
+                    print(
+                        "   ⚠️ 模型请求异常 %s（第 %d/3 次）"
+                        % (type(e).__name__, attempt + 1)
+                    )
                 else:
                     if r.status_code == 200:
                         break
-                    print('   ⚠️ 模型 HTTP %s（第 %d/3 次）' % (r.status_code, attempt + 1))
+                    print(
+                        "   ⚠️ 模型 HTTP %s（第 %d/3 次）" % (r.status_code, attempt + 1)
+                    )
                     r = None
                 if attempt < 2:
                     time.sleep(3 * (attempt + 1))
             if r is not None:
                 try:
-                    reply = r.json()['choices'][0]['message']['content'].strip()
+                    reply = r.json()["choices"][0]["message"]["content"].strip()
                 except (ValueError, KeyError, IndexError):
-                    print('   ❌ 模型响应格式异常')
+                    print("   ❌ 模型响应格式异常")
                     reply = None
             if reply:
                 break
-            print('   ⚠️ 模型 %s 3 次均失败' % model)
+            print("   ⚠️ 模型 %s 3 次均失败" % model)
         if reply is None:
-            print('   ❌ 全部模型均失败，本题本轮跳过，下一轮再试')
+            print("   ❌ 全部模型均失败，本题本轮跳过，下一轮再试")
             return [], prompt
-        print('   💬 %s' % reply.replace('\n', ' '))
+        print("   💬 %s" % reply.replace("\n", " "))
         if is_fill:
             ans = self.__extract_fill_answers(reply)
             if not ans:
-                print('   ⚠️ 回复里没有 ## 包裹的答案，本题留空')
+                print("   ⚠️ 回复里没有 ## 包裹的答案，本题留空")
             return ans, prompt
         if is_judge:
             # 拒答类回复（乱码/无法识别）走题型保底：不能让回复里的「无法」二字
             # 被 不 关键字命中误判成「错」——这就是旧版判断题"莫名有保底"的真相
-            if re.search(r'无法|抱歉|乱码|看不懂|识别不', reply):
+            if re.search(r"无法|抱歉|乱码|看不懂|识别不", reply):
                 return [], prompt
             # 先找回复里的 A/B，没有再按 对/错 关键字兜底；判断题只取一个
-            groups = re.findall(r'[AB]+', reply.upper())
-            best = max(groups, key=len) if groups else ''
+            groups = re.findall(r"[AB]+", reply.upper())
+            best = max(groups, key=len) if groups else ""
             if not best:
-                if re.search(r'错|不|false', reply, re.I):
-                    best = 'B'
-                elif re.search(r'对|正确|true', reply, re.I):
-                    best = 'A'
-            return (['true' if best[:1] == 'A' else 'false'] if best else []), prompt
+                if re.search(r"错|不|false", reply, re.I):
+                    best = "B"
+                elif re.search(r"对|正确|true", reply, re.I):
+                    best = "A"
+            return (["true" if best[:1] == "A" else "false"] if best else []), prompt
         # 选择题：字母集按题目实际选项动态生成（多选可到 E/F，写死 A-D 会漏选）
-        letters = ''.join(sorted(set(d for d, _ in options)))
+        letters = "".join(sorted(set(d for d, _ in options)))
         L = re.escape(letters)
         up = reply.upper()
         picked = []
-        for m in re.finditer(r'(?:正确答案|答案是|答案为|答案|正确选项|answer)[^A-Z\n]{0,6}((?:[%s][、,，\s]*)+)' % L,
-                             up):
-            picked = re.findall(r'[%s]' % L, m.group(1))  # 取最后一个匹配（答案通常在结尾）
+        for m in re.finditer(
+            r"(?:正确答案|答案是|答案为|答案|正确选项|answer)[^A-Z\n]{0,6}((?:[%s][、,，\s]*)+)"
+            % L,
+            up,
+        ):
+            picked = re.findall(
+                r"[%s]" % L, m.group(1)
+            )  # 取最后一个匹配（答案通常在结尾）
         if not picked:
             # 无关键词：找分隔字母列表（如 markdown 里的 "A、B、D"）
-            m = re.search(r'(?<![A-Z\-.])([%s](?:[、,，\s/]+[%s])+)' % (L, L), up)
+            m = re.search(r"(?<![A-Z\-.])([%s](?:[、,，\s/]+[%s])+)" % (L, L), up)
             if m:
-                picked = re.findall(r'[%s]' % L, m.group(1))
+                picked = re.findall(r"[%s]" % L, m.group(1))
         if not picked:
             # 连续串兜底（如 "ABCDE"）
-            groups = re.findall(r'[%s]+' % L, up)
+            groups = re.findall(r"[%s]+" % L, up)
             picked = list(max(groups, key=len)) if groups else []
         return [d for d in [x for x, _ in options] if d in picked], prompt
 
@@ -1292,15 +1509,15 @@ class ChaoXing:
     # 纯标点段与带 <> 的标记残片（模型思考过程的 </think> 之类）丢弃，重复答案去重
     @staticmethod
     def __extract_fill_answers(reply):
-        reply = (reply or '').strip()
-        parts = reply.split('##')
-        cand = parts[1:] if reply.startswith('##') else parts[1::2]
+        reply = (reply or "").strip()
+        parts = reply.split("##")
+        cand = parts[1:] if reply.startswith("##") else parts[1::2]
         out = []
         for p in cand:
             p = p.strip()
-            if not p or '<' in p or '>' in p:
+            if not p or "<" in p or ">" in p:
                 continue
-            if not re.sub(r'[\W_]+', '', p, flags=re.UNICODE):
+            if not re.sub(r"[\W_]+", "", p, flags=re.UNICODE):
                 continue
             if p not in out:
                 out.append(p)
@@ -1310,46 +1527,53 @@ class ChaoXing:
     # 保底为了不交白卷：空白必 0 分，多选全选命中率远高于空白；full_score 模式下
     # 保底答错的题会带错误答案进下一轮，不影响重试机制
     @staticmethod
-    def __fallback_answer(options, qtype='', type_name=''):
+    def __fallback_answer(options, qtype="", type_name=""):
         if not options:
             return []
-        if any(d in ('true', 'false') for d, _ in options):
-            return ['true']
+        if any(d in ("true", "false") for d, _ in options):
+            return ["true"]
         datas = [d for d, _ in options]
-        if str(qtype) == '1' or '多选' in (type_name or ''):
+        if str(qtype) == "1" or "多选" in (type_name or ""):
             return datas
         return datas[:1]
 
     # 24、组表单提交：隐藏字段全部沿用题面现值，填 answer{qid} + answeraqid（全部 qid 逗号串）；
     # dry_run=True 只打印不提交；题面 JS 提交前会在 URL 追加 ua/formType/saveStatus/pos/version，enc/pyFlag 为空
     def __submit_quiz(self, html, page_url, questions, answers, dry_run=False):
-        soup = BeautifulSoup(html, 'html.parser')
-        form = soup.find('form', id='form1')
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form", id="form1")
         if form is None:
-            print('❌📝 找不到提交表单 form1')
+            print("❌📝 找不到提交表单 form1")
             return False
-        action = urljoin(page_url, form.get('action', ''))
-        action += '&ua=pc&formType=post&saveStatus=1&pos=&version=1'
+        action = urljoin(page_url, form.get("action", ""))
+        action += "&ua=pc&formType=post&saveStatus=1&pos=&version=1"
         data = {}
-        for inp in form.find_all('input'):
-            name = inp.get('name')
+        for inp in form.find_all("input"):
+            name = inp.get("name")
             if name:
-                data[name] = inp.get('value', '')
-        data['answerwqbid'] = ','.join(q['qid'] for q in questions) + ','
+                data[name] = inp.get("value", "")
+        data["answerwqbid"] = ",".join(q["qid"] for q in questions) + ","
         for q in questions:
-            picked = answers.get(q['qid'])
+            picked = answers.get(q["qid"])
             if picked:
-                data['answer%s' % q['qid']] = ''.join(picked)
+                data["answer%s" % q["qid"]] = "".join(picked)
         if dry_run:
-            print('📝 [dry-run] 不真实提交，action=%s' % action)
+            print("📝 [dry-run] 不真实提交，action=%s" % action)
             for q in questions:
                 print(
-                    '   answer%s=%s (answertype=%s)' % (q['qid'], data.get('answer%s' % q['qid'], ''), q['answertype']))
+                    "   answer%s=%s (answertype=%s)"
+                    % (q["qid"], data.get("answer%s" % q["qid"], ""), q["answertype"])
+                )
             return True
-        r = self.__risky_req('POST', action, data=data, headers={
-            'Referer': page_url,
-            'Content-Type': 'application/x-www-form-urlencoded',
-        })
+        r = self.__risky_req(
+            "POST",
+            action,
+            data=data,
+            headers={
+                "Referer": page_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
         try:
             return r.json()
         except ValueError:
@@ -1359,12 +1583,19 @@ class ChaoXing:
     # 简答题一律不作答留空待老师批阅；full_score=True 时客观题未全对自动重做争取满分，默认提交即收工
     def finish_quiz(self, task_id, dry_run=False, full_score=False):
         marg = self.__get_marg(task_id)
-        quizzes = [a for a in marg['attachments']
-                   if a.get('type') == 'workid' and 'jobid' in a] if marg is not None else []
+        quizzes = (
+            [
+                a
+                for a in marg["attachments"]
+                if a.get("type") == "workid" and "jobid" in a
+            ]
+            if marg is not None
+            else []
+        )
         if not quizzes:
-            print('没有测验任务')
+            print("没有测验任务")
             return False
-        defaults = marg['defaults']
+        defaults = marg["defaults"]
         # 章节名用于错题报告文件名（capter_list 里该 task_id 对应的名称，查不到兜底用 task_id）
         chapter_name = str(task_id)
         for cid, cname in self.capter_list:
@@ -1374,25 +1605,25 @@ class ChaoXing:
         ok_list = []
         for att in quizzes:
             title = self.__att_title(att)
-            if att.get('job') is not True:
+            if att.get("job") is not True:
                 ok_list.append(True)
                 continue
-            print('📝%s 开始作答' % title)
+            print("📝%s 开始作答" % title)
             html, page_url = self.__fetch_quiz_html(att, defaults)
-            if 'TiMu' not in html:
-                print('❌📝%s 拉题面失败: %s' % (title, html[:150]))
+            if "TiMu" not in html:
+                print("❌📝%s 拉题面失败: %s" % (title, html[:150]))
                 ok_list.append(False)
                 continue
             # 已批阅页也渲染 TiMu 题面（带 marking_dui/marking_cuo 对错标记），直接提交会被拒，
             # 这里前置检测：调 retest 重置后重新拉作答页，不浪费一轮作答
-            if 'marking_dui' in html or 'marking_cuo' in html or 'Finalresult' in html:
-                print('📝%s 检测到已批阅，自动重做' % title)
+            if "marking_dui" in html or "marking_cuo" in html or "Finalresult" in html:
+                print("📝%s 检测到已批阅，自动重做" % title)
                 if not self.__redo_quiz(page_url):
                     ok_list.append(False)
                     continue
                 html, page_url = self.__fetch_quiz_html(att, defaults)
-                if 'TiMu' not in html:
-                    print('❌📝%s 重做后拉题面失败: %s' % (title, html[:150]))
+                if "TiMu" not in html:
+                    print("❌📝%s 重做后拉题面失败: %s" % (title, html[:150]))
                     ok_list.append(False)
                     continue
 
@@ -1406,9 +1637,19 @@ class ChaoXing:
             font = self.__extract_secret_font(html)
             mapping = self.__build_secret_map(font) if font else {}
             questions = self.__parse_quiz(html, mapping)
-            print('   📄 共 %d 题' % len(questions))
-            ok_list.append(self.__do_quiz(att['jobid'], html, page_url, questions, dry_run,
-                                          chapter_name, fetch_page, full_score))
+            print("   📄 共 %d 题" % len(questions))
+            ok_list.append(
+                self.__do_quiz(
+                    att["jobid"],
+                    html,
+                    page_url,
+                    questions,
+                    dry_run,
+                    chapter_name,
+                    fetch_page,
+                    full_score,
+                )
+            )
         # 返回本轮新完成的份数（实时进度条已在完成时即时输出，这里仅作结果参考）
         return sum(1 for ok in ok_list if ok)
 
@@ -1417,13 +1658,22 @@ class ChaoXing:
     #   简答题一律留空待批阅；提交被拒「已批阅作业」时调重做接口重置再拉新题面；
     #   达标口径=客观题全对（简答题待老师批阅不参与判定，纯简答测验视同达标）：
     #   full_score=True 未达标自动重做（最多 QUIZ_MAX_ROUNDS 轮争取满分），默认提交一次即收工
-    def __do_quiz(self, jobid, html, page_url, questions, dry_run, chapter_name,
-                  fetch_page=None, full_score=False):
+    def __do_quiz(
+        self,
+        jobid,
+        html,
+        page_url,
+        questions,
+        dry_run,
+        chapter_name,
+        fetch_page=None,
+        full_score=False,
+    ):
         if not questions:
-            print('❌📝 题面解析为空，无法作答（题型超出支持范围？）')
+            print("❌📝 题面解析为空，无法作答（题型超出支持范围？）")
             return False
-        has_short = any(q['qtype'] == '4' for q in questions)
-        wrong_hist = {q['qid']: [] for q in questions}  # qid → 历次错误答案
+        has_short = any(q["qtype"] == "4" for q in questions)
+        wrong_hist = {q["qid"]: [] for q in questions}  # qid → 历次错误答案
         last_prompt = {}  # qid → 最后一次发给 LLM 的提示词
         correct = {}  # qid → 已判对的答案
         all_right = False
@@ -1432,37 +1682,45 @@ class ChaoXing:
             # 轮次标题只在满分模式下显示：默认提交一次即收工永远只有一轮，
             # 打「第 1/3 轮」会让用户误以为要跑 3 轮
             if full_score:
-                print('━━━━━━ 第 %d/%d 轮作答 ━━━━━━' % (rnd, self.QUIZ_MAX_ROUNDS))
+                print("━━━━━━ 第 %d/%d 轮作答 ━━━━━━" % (rnd, self.QUIZ_MAX_ROUNDS))
             answers = {}
             for q in questions:
                 self.__print_question(q)
-                if q['qid'] in correct:
-                    picked = correct[q['qid']]
-                    print('   答案：%s（上轮已判对，直接沿用）' % self.__fmt_answer(picked))
-                elif q['qtype'] == '4':
+                if q["qid"] in correct:
+                    picked = correct[q["qid"]]
+                    print(
+                        "   答案：%s（上轮已判对，直接沿用）"
+                        % self.__fmt_answer(picked)
+                    )
+                elif q["qtype"] == "4":
                     # 简答题一律不作答：留空提交，等老师批阅（answerwqbid 仍含其 qid，否则 code-2）
                     picked = []
-                    print('   答案：（简答题不作答，留空待批阅）')
-                elif not q['options']:
+                    print("   答案：（简答题不作答，留空待批阅）")
+                elif not q["options"]:
                     # 客观题但选项解析为空（题面结构异常）：无法作答，留空提交防整场炸掉
                     picked = []
-                    print('   答案：（选项未识别，留空提交）')
+                    print("   答案：（选项未识别，留空提交）")
                 else:
-                    picked, prompt = self.__ask_llm(q['stem'], q['options'], wrong_hist[q['qid']],
-                                                    qtype=q.get('qtype', ''))
-                    last_prompt[q['qid']] = prompt
+                    picked, prompt = self.__ask_llm(
+                        q["stem"],
+                        q["options"],
+                        wrong_hist[q["qid"]],
+                        qtype=q.get("qtype", ""),
+                    )
+                    last_prompt[q["qid"]] = prompt
                     if not picked:
-                        picked = self.__fallback_answer(q['options'], q.get('qtype', ''),
-                                                        q.get('type_name', ''))
+                        picked = self.__fallback_answer(
+                            q["options"], q.get("qtype", ""), q.get("type_name", "")
+                        )
                         if picked:
-                            print('   🔒 模型未识别，按题型保底作答')
-                    print('   答案：%s' % self.__fmt_answer(picked))
-                answers[q['qid']] = picked
+                            print("   🔒 模型未识别，按题型保底作答")
+                    print("   答案：%s" % self.__fmt_answer(picked))
+                answers[q["qid"]] = picked
             if dry_run:
                 self.__submit_quiz(html, page_url, questions, answers, dry_run=True)
                 return False
             res = self.__submit_quiz(html, page_url, questions, answers)
-            if res and res.get('status') and all(q['qtype'] == '4' for q in questions):
+            if res and res.get("status") and all(q["qtype"] == "4" for q in questions):
                 # 纯简答测验：提交即达标（无客观题可判分，批阅页没有任何对错标记可解析，
                 # __grade_quiz 会误判为提交失败）
                 submitted_ok = True
@@ -1470,22 +1728,32 @@ class ChaoXing:
             result = self.__grade_quiz(page_url, questions, res)
             if result is None:
                 # 作业提交一次即被批阅锁定，重复提交被拒：调重做接口重置后拉新题面继续
-                if (not dry_run and res and not res.get('status')
-                        and '已批阅' in (res.get('msg') or '') and fetch_page is not None):
+                if (
+                    not dry_run
+                    and res
+                    and not res.get("status")
+                    and "已批阅" in (res.get("msg") or "")
+                    and fetch_page is not None
+                ):
                     if self.__redo_quiz(page_url):
                         html, page_url, questions = fetch_page()
                 continue
             for q in questions:
-                qid = q['qid']
+                qid = q["qid"]
                 if result.get(qid):
                     correct[qid] = answers[qid]
-                elif answers[qid] and q['qtype'] != '4':
+                elif answers[qid] and q["qtype"] != "4":
                     # 简答题留空不参与判分，也没有自动对错标记，不记「错误答案」
-                    wrong_hist[qid].append(' '.join(answers[qid]))
+                    wrong_hist[qid].append(" ".join(answers[qid]))
             # 达标口径 = 客观题全对（简答题待批阅不参与判定；纯简答测验无客观题，视同达标）
-            all_right = all(result.get(q['qid']) for q in questions if q['qtype'] != '4')
+            all_right = all(
+                result.get(q["qid"]) for q in questions if q["qtype"] != "4"
+            )
             if all_right:
-                print('🎉 客观题全部答对！%s' % ('（简答题待老师批阅）' if has_short else ''))
+                print(
+                    "🎉 客观题全部答对！%s"
+                    % ("（简答题待老师批阅）" if has_short else "")
+                )
                 # 实时任务点：每完成一份作业+1并即时输出总进度条
                 self.pts_done = min(self.pts_done + 1, self.pts_all)
                 print(self.__progress_bar(self.pts_done, self.pts_all))
@@ -1494,49 +1762,61 @@ class ChaoXing:
                 # 默认不追求满分：提交一次即收工
                 submitted_ok = True
                 break
-            print('⚠️ 本轮客观题有 %d 题答错，%s' % (
-                sum(1 for q in questions if q['qtype'] != '4' and not result.get(q['qid'])),
-                '继续下一轮' if rnd < self.QUIZ_MAX_ROUNDS else '已达最大重试次数'))
+            print(
+                "⚠️ 本轮客观题有 %d 题答错，%s"
+                % (
+                    sum(
+                        1
+                        for q in questions
+                        if q["qtype"] != "4" and not result.get(q["qid"])
+                    ),
+                    "继续下一轮" if rnd < self.QUIZ_MAX_ROUNDS else "已达最大重试次数",
+                )
+            )
             if rnd < self.QUIZ_MAX_ROUNDS and fetch_page is not None:
                 # 刚才提交成功即被批阅锁定，下一轮提交前必须先调重做接口重置并拉新题面，
                 # 否则会被「已批阅作业，不允许重复提交」拒绝
                 if self.__redo_quiz(page_url):
                     html, page_url, questions = fetch_page()
         if submitted_ok:
-            print('📝 已提交（默认不追求满分%s），本轮作答完成' %
-                  ('，简答题留空待老师批阅' if has_short else ''))
+            print(
+                "📝 已提交（默认不追求满分%s），本轮作答完成"
+                % ("，简答题留空待老师批阅" if has_short else "")
+            )
             # 实时任务点：作业已提交，按完成计
             self.pts_done = min(self.pts_done + 1, self.pts_all)
             print(self.__progress_bar(self.pts_done, self.pts_all))
         elif not all_right:
-            print('❌ 连续 %d 轮作答均未全部答对，本测验失败' % self.QUIZ_MAX_ROUNDS)
+            print("❌ 连续 %d 轮作答均未全部答对，本测验失败" % self.QUIZ_MAX_ROUNDS)
         if not submitted_ok:
             # 默认不追求满分的提交即走不落盘报告（这种场景错题详情无复盘价值；
             # 全对时报告内部也会自动跳过，实际只有 full_score 重做仍失败才写）
-            self.__report_quiz_result(questions, correct, wrong_hist, chapter_name, last_prompt)
+            self.__report_quiz_result(
+                questions, correct, wrong_hist, chapter_name, last_prompt
+            )
         return all_right or submitted_ok
 
     # 25.2、按用户格式输出题目（题干带题号，选项一行一个；判断题显示 A=对 B=错）
     @staticmethod
     def __question_lines(q):
-        is_judge = any(d in ('true', 'false') for d, _ in q['options'])
-        lines = [q['stem']]
-        for d, text in q['options']:
+        is_judge = any(d in ("true", "false") for d, _ in q["options"])
+        lines = [q["stem"]]
+        for d, text in q["options"]:
             if is_judge:
-                d = 'A' if d == 'true' else 'B'
-            lines.append('%s. %s' % (d, text))
-        if not q['options']:
-            if q.get('blanks'):
+                d = "A" if d == "true" else "B"
+            lines.append("%s. %s" % (d, text))
+        if not q["options"]:
+            if q.get("blanks"):
                 pass  # 填空题：题干里的 ____ 即空位，无选项行
-            elif q.get('qtype', '') == '4':
-                lines.append('（简答题，不作答，留空待老师批阅）')
+            elif q.get("qtype", "") == "4":
+                lines.append("（简答题，不作答，留空待老师批阅）")
             else:
-                lines.append('（选项未识别，不作答，留空待批阅）')
+                lines.append("（选项未识别，不作答，留空待批阅）")
         return lines
 
     @staticmethod
     def __print_question(q):
-        print('─' * 46)
+        print("─" * 46)
         for ln in ChaoXing.__question_lines(q):
             print(ln)
 
@@ -1544,25 +1824,29 @@ class ChaoXing:
     @staticmethod
     def __fmt_answer(picked):
         if not picked:
-            return '（未识别出答案）'
-        return ' '.join({'true': 'A', 'false': 'B'}.get(p, p) for p in picked)
+            return "（未识别出答案）"
+        return " ".join({"true": "A", "false": "B"}.get(p, p) for p in picked)
 
     # 25.4、判分：提交成功后重拉批阅页，解析每题对错，返回 {qid: 是否正确}
     # 批阅页地址在提交响应的 url 字段里（带 submit=true 服务端才渲染成批阅版；原作答页拉不到对错标记）
     # 批阅渲染可能有延迟，没拉齐全部对错标记就等 1 秒重拉，最多 3 次
     def __grade_quiz(self, page_url, questions, submit_res):
-        if not submit_res or not submit_res.get('status'):
-            print('❌📝 提交未成功: %s' % (submit_res or {}).get('msg', '无响应'))
+        if not submit_res or not submit_res.get("status"):
+            print("❌📝 提交未成功: %s" % (submit_res or {}).get("msg", "无响应"))
             return None
-        grade_url = urljoin('https://mooc1.chaoxing.com/', submit_res.get('url') or page_url)
+        grade_url = urljoin(
+            "https://mooc1.chaoxing.com/", submit_res.get("url") or page_url
+        )
 
         def parse_marks(page):
             marks = {}
-            for div in BeautifulSoup(page, 'html.parser').select('div.singleQuesId[data]'):
-                qid = div.get('data')
-                if div.select_one('.marking_dui') is not None:
+            for div in BeautifulSoup(page, "html.parser").select(
+                "div.singleQuesId[data]"
+            ):
+                qid = div.get("data")
+                if div.select_one(".marking_dui") is not None:
                     marks[qid] = True
-                elif div.select_one('.marking_cuo') is not None:
+                elif div.select_one(".marking_cuo") is not None:
                     marks[qid] = False
             return marks
 
@@ -1570,7 +1854,7 @@ class ChaoXing:
         soup = None
         for _ in range(3):
             r = self.session.get(grade_url)
-            soup = BeautifulSoup(r.text, 'html.parser')
+            soup = BeautifulSoup(r.text, "html.parser")
             result = parse_marks(r.text)
             if len(result) < len(questions):
                 # submit=true 版会漏渲染部分对错标记（实测多选题常缺），补拉已批阅版合并
@@ -1580,21 +1864,28 @@ class ChaoXing:
             if len(result) == len(questions):
                 break
             time.sleep(1)
-        score_el = soup.select_one('.Finalresult i')
+        score_el = soup.select_one(".Finalresult i")
         n_true = sum(1 for v in result.values() if v)
         n_false = sum(1 for v in result.values() if v is False)
         # 批阅页可能漏渲染个别题的对错标记（实测多选题常缺）：未判定 = 总题数 - 已判数；
         # 未判定数恰好等于简答题数时，是等老师批阅而非漏渲染
         n_undet = len(questions) - len(result)
-        n_short = sum(1 for q in questions if q['qtype'] == '4')
+        n_short = sum(1 for q in questions if q["qtype"] == "4")
         if n_undet and n_undet == n_short:
-            undet = '，含 %d 题简答待老师批阅' % n_short
+            undet = "，含 %d 题简答待老师批阅" % n_short
         else:
-            undet = '，未判定 %d 题按错题处理' % n_undet if n_undet else ''
-        score_txt = score_el.get_text(strip=True) if score_el else ''
-        print('📝 批阅: 最终成绩 %s（对 %d / 错 %d / 共 %d 题%s）' % (
-            '%s 分' % score_txt if score_txt else '批阅中未出分',
-            n_true, n_false, len(questions), undet))
+            undet = "，未判定 %d 题按错题处理" % n_undet if n_undet else ""
+        score_txt = score_el.get_text(strip=True) if score_el else ""
+        print(
+            "📝 批阅: 最终成绩 %s（对 %d / 错 %d / 共 %d 题%s）"
+            % (
+                "%s 分" % score_txt if score_txt else "批阅中未出分",
+                n_true,
+                n_false,
+                len(questions),
+                undet,
+            )
+        )
         return result or None
 
     # 25.4.1、重做：作业被批阅锁定后重置为可重做状态，返回新作答页地址（题目/enc 不变）。
@@ -1606,18 +1897,30 @@ class ChaoXing:
     # id 与 value 之间允许隔其他属性（作答页写法是 <input id="classId" name="classId" value="...">，
     # 紧邻正则会漏配）
     def __redo_quiz(self, page_url):
-        html = self.__risky_req('GET', page_url).text
-        m = re.search(r'function\s+reediter\s*\(\s*\)\s*\{.*?location\.href\s*=\s*((?:"[^"]*"\s*\+?\s*)+);',
-                      html, re.S)
+        html = self.__risky_req("GET", page_url).text
+        m = re.search(
+            r'function\s+reediter\s*\(\s*\)\s*\{.*?location\.href\s*=\s*((?:"[^"]*"\s*\+?\s*)+);',
+            html,
+            re.S,
+        )
         if m:
-            url = ''.join(re.findall(r'"([^"]*)"', m.group(1))).replace('&amp;', '&')
+            url = "".join(re.findall(r'"([^"]*)"', m.group(1))).replace("&amp;", "&")
             if url:
-                print('📝 🔁 已通过 reEdit 入口重置为可重做状态')
-                return urljoin('https://mooc1.chaoxing.com/', url)
+                print("📝 🔁 已通过 reEdit 入口重置为可重做状态")
+                return urljoin("https://mooc1.chaoxing.com/", url)
         query = dict(parse_qsl(urlparse(page_url).query))
         fields = {}
-        for fid in ('courseId', 'classId', 'workId', 'workAnswerId', 'knowledgeid',
-                    'jobid', 'originJobId', 'enc', 'cpi'):
+        for fid in (
+            "courseId",
+            "classId",
+            "workId",
+            "workAnswerId",
+            "knowledgeid",
+            "jobid",
+            "originJobId",
+            "enc",
+            "cpi",
+        ):
             if fid in query and query[fid]:
                 fields[fid] = query[fid]
                 continue
@@ -1625,45 +1928,56 @@ class ChaoXing:
             if not m:
                 m = re.search(r'value="([^"]*)"[^>]*?(?:id|name)="%s"' % fid, html)
             if not m:
-                print('📝 ⚠️ 重做失败：页面缺少字段 %s' % fid)
+                print("📝 ⚠️ 重做失败：页面缺少字段 %s" % fid)
                 return None
             fields[fid] = m.group(1)
-        r = self.__risky_req('GET', 'https://mooc1.chaoxing.com/work/retest',
-                             params=dict(fields, mooc2=1, wMicroNodeId='0'))
+        r = self.__risky_req(
+            "GET",
+            "https://mooc1.chaoxing.com/work/retest",
+            params=dict(fields, mooc2=1, wMicroNodeId="0"),
+        )
         try:
             data = r.json()
         except ValueError:
             data = {}
-        if data.get('url'):
-            print('📝 🔁 已重置为可重做状态')
-            return urljoin('https://mooc1.chaoxing.com/', data['url'])
-        print('📝 ⚠️ 重做失败：%s' % (data.get('msg') or r.text[:100]))
+        if data.get("url"):
+            print("📝 🔁 已重置为可重做状态")
+            return urljoin("https://mooc1.chaoxing.com/", data["url"])
+        print("📝 ⚠️ 重做失败：%s" % (data.get("msg") or r.text[:100]))
         return None
 
     # 25.5、最终报告：全部做对不输出（__do_quiz 已打 🎉）；错题详情只写文件不刷控制台，
     # 存进「错题报告」文件夹（文件名：用户名_章节名_测试.txt，重跑覆盖为最新）
-    def __report_quiz_result(self, questions, correct, wrong_hist, chapter_name, last_prompt=None):
-        wrong_qs = [q for q in questions if q['qid'] not in correct]
+    def __report_quiz_result(
+        self, questions, correct, wrong_hist, chapter_name, last_prompt=None
+    ):
+        wrong_qs = [q for q in questions if q["qid"] not in correct]
         if not wrong_qs:
             return
-        lines = ['❌ 共 %d 题答错（历次错误答案如下）:' % len(wrong_qs)]
+        lines = ["❌ 共 %d 题答错（历次错误答案如下）:" % len(wrong_qs)]
         for q in wrong_qs:
-            chunk = ['─' * 46] + self.__question_lines(q)
+            chunk = ["─" * 46] + self.__question_lines(q)
             # 判断题历史答案 true/false 转成 A/B（与选项显示一致）
-            hist = [self.__fmt_answer(h.split()) for h in wrong_hist[q['qid']]]
-            chunk.append('   错误答案：%s' % ('、'.join(hist) if hist else '（无记录）'))
+            hist = [self.__fmt_answer(h.split()) for h in wrong_hist[q["qid"]]]
+            chunk.append(
+                "   错误答案：%s" % ("、".join(hist) if hist else "（无记录）")
+            )
             lines.extend(chunk)
-            if last_prompt and q['qid'] in last_prompt:
+            if last_prompt and q["qid"] in last_prompt:
                 # 最后一次提示词只写进报告（控制台不刷屏）
-                lines.append('   最后一次提示词：')
-                lines.extend('      ' + ln for ln in last_prompt[q['qid']].splitlines())
+                lines.append("   最后一次提示词：")
+                lines.extend("      " + ln for ln in last_prompt[q["qid"]].splitlines())
         os.makedirs(self.REPORT_DIR, exist_ok=True)
-        safe_name = re.sub(r'[\\/:*?"<>|]', '_', chapter_name)  # 章节名可能含引号等 Windows 文件名非法字符
-        fname = '%s_%s_测试.txt' % (self.realname or self.username, safe_name)
+        safe_name = re.sub(
+            r'[\\/:*?"<>|]', "_", chapter_name
+        )  # 章节名可能含引号等 Windows 文件名非法字符
+        fname = "%s_%s_测试.txt" % (self.realname or self.username, safe_name)
         path = os.path.join(self.REPORT_DIR, fname)
-        with open(path, 'w', encoding='utf-8-sig') as f:  # utf-8-sig：记事本双击打开不乱码
-            f.write('\n'.join(lines))
-        print('💾 报告已保存：%s' % path)
+        with open(
+            path, "w", encoding="utf-8-sig"
+        ) as f:  # utf-8-sig：记事本双击打开不乱码
+            f.write("\n".join(lines))
+        print("💾 报告已保存：%s" % path)
 
     # ---------- 考试（exam-ans）----------
 
@@ -1673,33 +1987,35 @@ class ChaoXing:
     @staticmethod
     def __exam_gap_x(big_bytes, small_bytes):
         info = slider_gap.find_gap_info(big_bytes, small_bytes)
-        gaps = (info or {}).get('gaps') or []
-        gaps = [g for g in gaps if g.get('x') is not None]
+        gaps = (info or {}).get("gaps") or []
+        gaps = [g for g in gaps if g.get("x") is not None]
         if not gaps:
             return None
         yellow_x = None
         try:
-            rgb = np.asarray(Image.open(io.BytesIO(big_bytes)).convert('RGB'))
-            ys, xs = np.where((rgb[:, :, 0] > 170) & (rgb[:, :, 1] > 120) & (rgb[:, :, 2] < 130))
+            rgb = np.asarray(Image.open(io.BytesIO(big_bytes)).convert("RGB"))
+            ys, xs = np.where(
+                (rgb[:, :, 0] > 170) & (rgb[:, :, 1] > 120) & (rgb[:, :, 2] < 130)
+            )
             if len(xs) > 20:
                 yellow_x = int(np.median(xs))
         except Exception:
             pass
         if yellow_x is not None:
-            cands = [g for g in gaps if abs(int(g['x']) - yellow_x) > 30] or gaps
-            best = max(cands, key=lambda g: g.get('conf', 0))
+            cands = [g for g in gaps if abs(int(g["x"]) - yellow_x) > 30] or gaps
+            best = max(cands, key=lambda g: g.get("conf", 0))
         elif len(gaps) > 1:
-            best = max(gaps, key=lambda g: int(g['x']))
+            best = max(gaps, key=lambda g: int(g["x"]))
         else:
             best = gaps[0]
-        return int(best['x'])
+        return int(best["x"])
 
     # 27.0.2、cx_captcha JSONP 请求：响应形如 cx_captcha_function({...})，抠出括号内 JSON
     def __exam_jsonp(self, url, params, headers=None):
         r = self.session.get(url, params=params, headers=headers, timeout=15)
         txt = r.text.strip()
-        a, b = txt.find('('), txt.rfind(')')
-        return json.loads(txt[a + 1:b])
+        a, b = txt.find("("), txt.rfind(")")
+        return json.loads(txt[a + 1 : b])
 
     # 27.1、考试滑块验证码纯协议过验（全部生成算法逆向自 load-i.min.js @124061-124354）：
     #   conf 接口拿服务器时间 t；captchaKey = md5(t+uuid4)；
@@ -1708,53 +2024,90 @@ class ChaoXing:
     #   check 的 token 用 image 响应的大写 token；提交值 = 真缺口左缘 x（±3px 容差）；
     #   成功响应 extraData 里带 validate，拼成 validate_<captchaId>_<token>
     def __slide_captcha_validate(self, captcha_id, referer):
-        headers = {'Referer': referer}
-        cb = 'cx_captcha_function'
-        base = 'https://captcha.chaoxing.com/captcha/v1'
+        headers = {"Referer": referer}
+        cb = "cx_captcha_function"
+        base = "https://captcha.chaoxing.com/captcha/v1"
         for attempt in range(1, 9):  # 单次识别非100%准，8轮叠加通过率
             try:
                 conf = self.__exam_jsonp(
-                    base + '/get/conf',
-                    {'callback': cb, 'captchaId': captcha_id,
-                     'version': self.EXAM_CAPTCHA_VERSION, '_': int(time.time() * 1000)},
-                    headers)
-                server_time = str(conf['t'])
-                captcha_key = hashlib.md5((server_time + str(uuid.uuid4())).encode()).hexdigest()
+                    base + "/get/conf",
+                    {
+                        "callback": cb,
+                        "captchaId": captcha_id,
+                        "version": self.EXAM_CAPTCHA_VERSION,
+                        "_": int(time.time() * 1000),
+                    },
+                    headers,
+                )
+                server_time = str(conf["t"])
+                captcha_key = hashlib.md5(
+                    (server_time + str(uuid.uuid4())).encode()
+                ).hexdigest()
                 token_req = hashlib.md5(
-                    (server_time + captcha_id + 'slide' + captcha_key).encode()).hexdigest()
-                token_req += ':' + str(int(server_time) + 300000)
+                    (server_time + captcha_id + "slide" + captcha_key).encode()
+                ).hexdigest()
+                token_req += ":" + str(int(server_time) + 300000)
                 iv = hashlib.md5(
-                    (captcha_id + 'slide' + str(int(time.time() * 1000)) + str(uuid.uuid4())).encode()).hexdigest()
+                    (
+                        captcha_id
+                        + "slide"
+                        + str(int(time.time() * 1000))
+                        + str(uuid.uuid4())
+                    ).encode()
+                ).hexdigest()
                 img = self.__exam_jsonp(
-                    base + '/get/verification/image',
-                    {'callback': cb, 'captchaId': captcha_id, 'type': 'slide',
-                     'version': self.EXAM_CAPTCHA_VERSION, 'captchaKey': captcha_key,
-                     'token': token_req, 'referer': referer[:200], 'iv': iv,
-                     '_': int(time.time() * 1000)}, headers)
-                token = img['token']
-                vo = img['imageVerificationVo']
-                big = self.session.get(vo['shadeImage'], params={'t': 20703}, headers=headers, timeout=15).content
-                small = self.session.get(vo['cutoutImage'], params={'t': 20703}, headers=headers, timeout=15).content
+                    base + "/get/verification/image",
+                    {
+                        "callback": cb,
+                        "captchaId": captcha_id,
+                        "type": "slide",
+                        "version": self.EXAM_CAPTCHA_VERSION,
+                        "captchaKey": captcha_key,
+                        "token": token_req,
+                        "referer": referer[:200],
+                        "iv": iv,
+                        "_": int(time.time() * 1000),
+                    },
+                    headers,
+                )
+                token = img["token"]
+                vo = img["imageVerificationVo"]
+                big = self.session.get(
+                    vo["shadeImage"], params={"t": 20703}, headers=headers, timeout=15
+                ).content
+                small = self.session.get(
+                    vo["cutoutImage"], params={"t": 20703}, headers=headers, timeout=15
+                ).content
                 x = self.__exam_gap_x(big, small)
                 if x is None:
-                    print('❌ 缺口OCR识别失败，换图重试')
+                    print("❌ 缺口OCR识别失败，换图重试")
                     continue
-                print('🔎 缺口OCR识别：x=%s' % x)
+                print("🔎 缺口OCR识别：x=%s" % x)
                 chk = self.__exam_jsonp(
-                    base + '/check/verification/result',
-                    {'callback': cb, 'captchaId': captcha_id, 'type': 'slide',
-                     'token': token, 'coordinate': '[]', 'runEnv': 10,
-                     'version': self.EXAM_CAPTCHA_VERSION, 't': 'a', 'iv': iv,
-                     'textClickArr': json.dumps([{'x': x}], separators=(',', ':')),
-                     '_': int(time.time() * 1000)}, headers)
-                if chk.get('result') is True:
-                    print('✅ 滑块校验已提交，验证通过')
-                    return 'validate_%s_%s' % (captcha_id, token)
-                print('⚠️ 校验未通过（x=%s），换图重试' % x)
+                    base + "/check/verification/result",
+                    {
+                        "callback": cb,
+                        "captchaId": captcha_id,
+                        "type": "slide",
+                        "token": token,
+                        "coordinate": "[]",
+                        "runEnv": 10,
+                        "version": self.EXAM_CAPTCHA_VERSION,
+                        "t": "a",
+                        "iv": iv,
+                        "textClickArr": json.dumps([{"x": x}], separators=(",", ":")),
+                        "_": int(time.time() * 1000),
+                    },
+                    headers,
+                )
+                if chk.get("result") is True:
+                    print("✅ 滑块校验已提交，验证通过")
+                    return "validate_%s_%s" % (captcha_id, token)
+                print("⚠️ 校验未通过（x=%s），换图重试" % x)
             except Exception as e:
-                print('❌ 滑块异常 %s，重试' % type(e).__name__)
+                print("❌ 滑块异常 %s，重试" % type(e).__name__)
             time.sleep(1.5)  # 轮间稍歇，连发太快不像人
-        print('❌ 滑块验证失败（重试8轮未通过）')
+        print("❌ 滑块验证失败（重试8轮未通过）")
         return None
 
     # 27.1.5、课程考试列表：考试 tab（exam-ans/mooc2/exam/exam-list），
@@ -1763,36 +2116,46 @@ class ChaoXing:
     # p.overHidden2(考试名) + p.status(状态：待做/已完成/…)；解析失败返回空表
     def get_exam_list(self):
         params = dict(self._stu_params)
-        params['examEnc'] = getattr(self, 'exam_enc', '')
-        r = self.__risky_req('GET', 'https://mooc1.chaoxing.com/exam-ans/mooc2/exam/exam-list',
-                             params=params,
-                             headers={'Referer': 'https://mooc2-ans.chaoxing.com/'})
-        soup = BeautifulSoup(r.text, 'html.parser')
+        params["examEnc"] = getattr(self, "exam_enc", "")
+        r = self.__risky_req(
+            "GET",
+            "https://mooc1.chaoxing.com/exam-ans/mooc2/exam/exam-list",
+            params=params,
+            headers={"Referer": "https://mooc2-ans.chaoxing.com/"},
+        )
+        soup = BeautifulSoup(r.text, "html.parser")
         exams = []
-        for li in soup.find_all('li'):
-            name_el = li.select_one('p.overHidden2')
+        for li in soup.find_all("li"):
+            name_el = li.select_one("p.overHidden2")
             if name_el is None:
                 continue
-            status_el = li.select_one('p.status')
+            status_el = li.select_one("p.status")
             # goTest 参数可能在主 div（待做）或重考按钮 a（已完成，主 div 是 viewExamAnswer），逐个 onclick 找
             m = None
-            for el in li.select('[onclick]'):
-                m = re.search(r"goTest\('(\d+)',(\d+),(\d+),'([^']*)',(\d+),(true|false),'([^']*)'",
-                              el.get('onclick', ''))
+            for el in li.select("[onclick]"):
+                m = re.search(
+                    r"goTest\('(\d+)',(\d+),(\d+),'([^']*)',(\d+),(true|false),'([^']*)'",
+                    el.get("onclick", ""),
+                )
                 if m:
                     break
             if m is None:
                 continue
-            ex = {'exam_id': m.group(2), 'relation_id': m.group(3),
-                  'deadline': m.group(4),
-                  'enc': m.group(7) if not m.group(7).startswith('$') else '',
-                  'name': name_el.get_text(strip=True),
-                  'status': status_el.get_text(strip=True) if status_el is not None else ''}
-            num = li.select_one('.numspan')  # 已完成的 li 直接带最终分数（如「37分」）
+            ex = {
+                "exam_id": m.group(2),
+                "relation_id": m.group(3),
+                "deadline": m.group(4),
+                "enc": m.group(7) if not m.group(7).startswith("$") else "",
+                "name": name_el.get_text(strip=True),
+                "status": status_el.get_text(strip=True)
+                if status_el is not None
+                else "",
+            }
+            num = li.select_one(".numspan")  # 已完成的 li 直接带最终分数（如「37分」）
             if num is not None:
-                sm = re.search(r'([\d.]+)', num.get_text())
+                sm = re.search(r"([\d.]+)", num.get_text())
                 if sm:
-                    ex['score'] = float(sm.group(1))
+                    ex["score"] = float(sm.group(1))
             exams.append(ex)
         return exams
 
@@ -1802,82 +2165,114 @@ class ChaoXing:
     # 与页面 jumpRetest() 一致）；重考要求本场已交卷且剩余重考次数>0。
     # 返回会话 dict（链三元组 lu/rt/enc + 全部入口参数），失败返回 None
     def start_exam(self, course_id, class_id, exam_id, cpi, retake=False):
-        notes_url = ('https://mooc1.chaoxing.com/exam-ans/exam/test/examcode/examnotes'
-                     '?courseId=%s&classId=%s&examId=%s&cpi=%s%s' % (
-                         course_id, class_id, exam_id, cpi,
-                         '&reset=true' if retake else ''))
-        r = self.__risky_req('GET', notes_url)
-        soup = BeautifulSoup(r.text, 'html.parser')
+        notes_url = (
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/examcode/examnotes"
+            "?courseId=%s&classId=%s&examId=%s&cpi=%s%s"
+            % (course_id, class_id, exam_id, cpi, "&reset=true" if retake else "")
+        )
+        r = self.__risky_req("GET", notes_url)
+        soup = BeautifulSoup(r.text, "html.parser")
 
         def hid(iid):
-            el = soup.find('input', id=iid)
-            return el.get('value', '') if el else None
+            el = soup.find("input", id=iid)
+            return el.get("value", "") if el else None
 
-        answer_id = hid('answerId')
-        start_btn = soup.find(id='startBtn')
+        answer_id = hid("answerId")
+        start_btn = soup.find(id="startBtn")
         if not answer_id or start_btn is None:
-            print('❌ examnotes 页解析失败（未登录/考试不存在/已用完次数）: %s' % r.url)
+            print("❌ examnotes 页解析失败（未登录/考试不存在/已用完次数）: %s" % r.url)
             return None
         # 跳转地址在 href 里（enc=? 是占位符，openc 服务端已渲染好）
-        jump_tpl = urljoin(notes_url, start_btn.get('data') or start_btn.get('href', ''))
-        openc = dict(parse_qsl(urlparse(jump_tpl).query)).get('openc', '')
+        jump_tpl = urljoin(
+            notes_url, start_btn.get("data") or start_btn.get("href", "")
+        )
+        openc = dict(parse_qsl(urlparse(jump_tpl).query)).get("openc", "")
 
-        validate = ''
-        if hid('captchaCheck') == '1':
-            captcha_id = hid('captchaCaptchaId') or ''
-            print('🧩 需要滑块验证码，开始协议过验...')
+        validate = ""
+        if hid("captchaCheck") == "1":
+            captcha_id = hid("captchaCaptchaId") or ""
+            print("🧩 需要滑块验证码，开始协议过验...")
             validate = self.__slide_captcha_validate(captcha_id, notes_url)
             if not validate:
                 return None
         # examcheck：captchavalidate 换 enc（enc 对同一考试是确定性值，重复进入不变）
-        qs = {'view': 'json', 'answerId': answer_id, 'examId': exam_id, 'classId': class_id,
-              'courseId': course_id, 'cpi': cpi, 'code': '', 'sdlkey': '', 'facekey': '',
-              'captchavalidate': validate, '_signcode': ''}
-        r2 = self.__risky_req('GET', 'https://mooc1.chaoxing.com/exam-ans/exam/test/examcheck',
-                              params=qs, headers={'Referer': notes_url,
-                                                  'X-Requested-With': 'XMLHttpRequest'})
+        qs = {
+            "view": "json",
+            "answerId": answer_id,
+            "examId": exam_id,
+            "classId": class_id,
+            "courseId": course_id,
+            "cpi": cpi,
+            "code": "",
+            "sdlkey": "",
+            "facekey": "",
+            "captchavalidate": validate,
+            "_signcode": "",
+        }
+        r2 = self.__risky_req(
+            "GET",
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/examcheck",
+            params=qs,
+            headers={"Referer": notes_url, "X-Requested-With": "XMLHttpRequest"},
+        )
         try:
             data = r2.json()
         except ValueError:
             data = {}
-        if not data.get('status'):
-            print('❌ examcheck 未通过: %s' % (data.get('msg') or r2.text[:150]))
+        if not data.get("status"):
+            print("❌ examcheck 未通过: %s" % (data.get("msg") or r2.text[:150]))
             return None
-        enc = data.get('enc', '')
+        enc = data.get("enc", "")
         # 重考（reset=true）的真实重置动作：说明页只是进入重考模式，答卷状态要靠
         # reVersionReTest 重置（与页面 jumpExam -> reTestAction 一致），漏了这步
         # 答题页会渲染「考试已经提交」提示页
         if retake:
-            rr = self.__risky_req('GET', 'https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionReTest',
-                                  params={'courseId': course_id, 'classId': class_id,
-                                          'tId': exam_id, 'id': answer_id},
-                                  headers={'Referer': notes_url, 'X-Requested-With': 'XMLHttpRequest'})
+            rr = self.__risky_req(
+                "GET",
+                "https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionReTest",
+                params={
+                    "courseId": course_id,
+                    "classId": class_id,
+                    "tId": exam_id,
+                    "id": answer_id,
+                },
+                headers={"Referer": notes_url, "X-Requested-With": "XMLHttpRequest"},
+            )
             try:
                 rd = rr.json()
             except ValueError:
                 rd = {}
-            if not rd.get('status'):
-                print('❌ 重考重置失败: %s' % (rd.get('msg') or rr.text[:120]))
+            if not rd.get("status"):
+                print("❌ 重考重置失败: %s" % (rd.get("msg") or rr.text[:120]))
                 return None
-            print('🔄 已重置答卷，开新一轮限时')
-        jump_url = jump_tpl.replace('enc=?', 'enc=' + enc)
+            print("🔄 已重置答卷，开新一轮限时")
+        jump_url = jump_tpl.replace("enc=?", "enc=" + enc)
         # 服务端「10 分钟内禁止交卷」计时起点接近 startTest，进入时刻记下来供交卷等待用
         enter_time = time.time()
         # 进入答题页，渲染第一题（页面自带链三元组 enc/remainTime/encLastUpdateTime）
         # 走 __risky_req：考试请求同样会撞 9010 风控，命中后自动过码重发
-        r3 = self.__risky_req('GET', jump_url, headers={'Referer': notes_url})
+        r3 = self.__risky_req("GET", jump_url, headers={"Referer": notes_url})
         page = self.__parse_exam_page(r3.text, jump_url)
-        if not page or not page.get('qid'):
-            print('❌ 答题页拉取失败: %s' % r3.url)
+        if not page or not page.get("qid"):
+            print("❌ 答题页拉取失败: %s" % r3.url)
             return None
-        sess = {'course_id': course_id, 'class_id': class_id, 'exam_id': exam_id,
-                'cpi': cpi, 'openc': openc, 'lu': page['encLastUpdateTime'],
-                'rt': page['remainTime'], 'enc': page['enc'], 'referer': jump_url,
-                'total': page.get('total') or 0, 'answer_id': answer_id,
-                'enter_time': enter_time}
-        print('✍️ 考试开始作答')
-        print('   📄 共 %s 题，剩余 %s 秒' % (sess['total'] or '?', page['remainTime']))
-        sess['first_page'] = page
+        sess = {
+            "course_id": course_id,
+            "class_id": class_id,
+            "exam_id": exam_id,
+            "cpi": cpi,
+            "openc": openc,
+            "lu": page["encLastUpdateTime"],
+            "rt": page["remainTime"],
+            "enc": page["enc"],
+            "referer": jump_url,
+            "total": page.get("total") or 0,
+            "answer_id": answer_id,
+            "enter_time": enter_time,
+        }
+        print("✍️ 考试开始作答")
+        print("   📄 共 %s 题，剩余 %s 秒" % (sess["total"] or "?", page["remainTime"]))
+        sess["first_page"] = page
         return sess
 
     # 27.3、解析题面页：只取 #submitTest 表单内带 name 的 hidden（与浏览器 serialize 完全一致），
@@ -1886,60 +2281,72 @@ class ChaoXing:
     # 字体把置换码位渲染成真字，学生看着正常——不接解密的话置换位会以错字发给大模型
     # （「安全教育→安全为育」）。每题页内嵌字体后按字体 md5 建映射再解码（不同卷置换不同）
     def __parse_exam_page(self, html, page_url):
-        soup = BeautifulSoup(html, 'html.parser')
-        form = soup.find('form', id='submitTest')
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form", id="submitTest")
         if form is None:
             return None
         fields = []
-        for inp in form.find_all('input'):
-            nm = inp.get('name')
+        for inp in form.find_all("input"):
+            nm = inp.get("name")
             if nm:
-                fields.append((nm, inp.get('value', '')))
+                fields.append((nm, inp.get("value", "")))
         fd = dict(fields)
-        qid = fd.get('questionId')
+        qid = fd.get("questionId")
         if not qid:
             return None
-        h3 = soup.select_one('h3.mark_name')
-        stem = h3.get_text(' ', strip=True) if h3 is not None else ''
+        h3 = soup.select_one("h3.mark_name")
+        stem = h3.get_text(" ", strip=True) if h3 is not None else ""
         options = []
-        for span in soup.select('span[data][qid]'):
-            p = span.find_next('div', class_='answer_p')
-            options.append((span.get('data', ''), p.get_text(' ', strip=True) if p is not None else ''))
+        for span in soup.select("span[data][qid]"):
+            p = span.find_next("div", class_="answer_p")
+            options.append(
+                (
+                    span.get("data", ""),
+                    p.get_text(" ", strip=True) if p is not None else "",
+                )
+            )
         mapping = {}
         try:
             font = self.__extract_secret_font(html)
             if font:
                 mapping = self.__build_secret_map(font)
         except Exception as e:
-            print('   ⚠️ 考试字体解密失败（按原文作答）: %s: %s' % (type(e).__name__, e))
+            print("   ⚠️ 考试字体解密失败（按原文作答）: %s: %s" % (type(e).__name__, e))
         if mapping:
             stem = self.__decode_cxsecret(stem, mapping)
             options = [(d, self.__decode_cxsecret(t, mapping)) for d, t in options]
-        total_m = re.search(r'题量:\s*(\d+)', html)
-        return {'page_url': page_url, 'fields': fields, 'fd': fd, 'qid': qid,
-                'qtype': fd.get('type' + qid, ''),
-                'type_name': fd.get('typeName' + qid, ''),
-                'stem': stem, 'options': options,
-                'total': int(total_m.group(1)) if total_m else 0,
-                'remainTime': fd.get('remainTime', ''),
-                'encLastUpdateTime': fd.get('encLastUpdateTime', ''),
-                'enc': fd.get('enc', '')}
+        total_m = re.search(r"题量:\s*(\d+)", html)
+        return {
+            "page_url": page_url,
+            "fields": fields,
+            "fd": fd,
+            "qid": qid,
+            "qtype": fd.get("type" + qid, ""),
+            "type_name": fd.get("typeName" + qid, ""),
+            "stem": stem,
+            "options": options,
+            "total": int(total_m.group(1)) if total_m else 0,
+            "remainTime": fd.get("remainTime", ""),
+            "encLastUpdateTime": fd.get("encLastUpdateTime", ""),
+            "enc": fd.get("enc", ""),
+        }
 
     # 27.4、翻题拉取：与页面 getTheNextQuestion 一致——
     # URL 带上一题保存响应的三元组（remainTimeParam/relationAnswerLastUpdateTime/enc），
     # 服务端按 start 渲染第 start+1 题；页面级校验失败会返回 1KB 错误页，此时置 None 断链
     def __fetch_exam_question(self, sess, start):
-        url = ('https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionTestStartNew'
-               '?keyboardDisplayRequiresUserAction=1&getTheNextQuestion=1'
-               '&courseId=%(course_id)s&classId=%(class_id)s&tId=%(exam_id)s&p=1&start=%(start)s'
-               '&remainTimeParam=%(rt)s&relationAnswerLastUpdateTime=%(lu)s&enc=%(enc)s'
-               '&monitorStatus=0&monitorOp=-1&examsystem=0&qbanksystem=0&qbankbackurl='
-               '&cpi=%(cpi)s&openc=%(openc)s&newMooc=true&webSnapshotMonitor=0') % dict(
-            sess, start=start)
-        r = self.__risky_req('GET', url, headers={'Referer': sess['referer']})
+        url = (
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionTestStartNew"
+            "?keyboardDisplayRequiresUserAction=1&getTheNextQuestion=1"
+            "&courseId=%(course_id)s&classId=%(class_id)s&tId=%(exam_id)s&p=1&start=%(start)s"
+            "&remainTimeParam=%(rt)s&relationAnswerLastUpdateTime=%(lu)s&enc=%(enc)s"
+            "&monitorStatus=0&monitorOp=-1&examsystem=0&qbanksystem=0&qbankbackurl="
+            "&cpi=%(cpi)s&openc=%(openc)s&newMooc=true&webSnapshotMonitor=0"
+        ) % dict(sess, start=start)
+        r = self.__risky_req("GET", url, headers={"Referer": sess["referer"]})
         page = self.__parse_exam_page(r.text, url)
         if page:
-            sess['referer'] = url
+            sess["referer"] = url
         return page
 
     # 27.5、保存/交卷：POST reVersionSubmitTestNew，URL 参数拼 tempSave + pos + version=1
@@ -1948,36 +2355,50 @@ class ChaoXing:
     # 保存响应 data = lastUpdateTime|remainTime|enc，作为下一题拉取链；
     # tempSave=False 时响应 status 变为 submitted/forceSubmitted，url 字段是批阅页
     def __save_exam_question(self, sess, page, answer, temp_save=True):
-        fd = page['fd']
-        url = ('https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionSubmitTestNew'
-               '?classId=%s&courseId=%s&testPaperId=%s&testUserRelationId=%s'
-               '&cpi=%s&tempSave=%s&pos=&version=1') % (
-                  fd.get('classId', sess['class_id']), fd.get('courseId', sess['course_id']),
-                  fd.get('testPaperId', sess['exam_id']), fd.get('testUserRelationId', ''),
-                  fd.get('cpi', sess['cpi']), 'true' if temp_save else 'false')
+        fd = page["fd"]
+        url = (
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/reVersionSubmitTestNew"
+            "?classId=%s&courseId=%s&testPaperId=%s&testUserRelationId=%s"
+            "&cpi=%s&tempSave=%s&pos=&version=1"
+        ) % (
+            fd.get("classId", sess["class_id"]),
+            fd.get("courseId", sess["course_id"]),
+            fd.get("testPaperId", sess["exam_id"]),
+            fd.get("testUserRelationId", ""),
+            fd.get("cpi", sess["cpi"]),
+            "true" if temp_save else "false",
+        )
         data = []
-        for k, v in page['fields']:
-            if k == 'tempSave':
-                v = 'true' if temp_save else 'false'
-            elif answer is not None and k in ('answer' + page['qid'], 'answers' + page['qid']):
+        for k, v in page["fields"]:
+            if k == "tempSave":
+                v = "true" if temp_save else "false"
+            elif answer is not None and k in (
+                "answer" + page["qid"],
+                "answers" + page["qid"],
+            ):
                 # 答案字段名随题型不同：单选/判断 name=answer<qid>（单数），
                 # 多选页 hidden id=answer<qid> 但 name=answers<qid>（复数，
                 # 与 JS addMultipleChoice 按 id 写入一致），两个都要匹配，
                 # 否则多选答案覆盖不生效，提交原空值但接口仍返 success
                 v = answer
             data.append((k, v))
-        r = self.__risky_req('POST', url, data=data, headers={
-            'Referer': page['page_url'],
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        })
+        r = self.__risky_req(
+            "POST",
+            url,
+            data=data,
+            headers={
+                "Referer": page["page_url"],
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            },
+        )
         try:
             resp = r.json()
         except ValueError:
-            resp = {'status': 'http%s' % r.status_code, 'msg': r.text[:150]}
-        d = (resp.get('data') or '').split('|')
-        if resp.get('status') == 'success' and len(d) == 3:
-            sess['lu'], sess['rt'], sess['enc'] = d[0], d[1], d[2]
+            resp = {"status": "http%s" % r.status_code, "msg": r.text[:150]}
+        d = (resp.get("data") or "").split("|")
+        if resp.get("status") == "success" and len(d) == 3:
+            sess["lu"], sess["rt"], sess["enc"] = d[0], d[1], d[2]
         return resp
 
     # 27.6、考试主流程：进入 -> 逐题 LLM 作答保存 -> 答完自动交卷 + 错题报告。
@@ -1994,24 +2415,26 @@ class ChaoXing:
             sess = self.start_exam(course_id, class_id, exam_id, cpi, retake=retake)
             if sess is None:
                 return False
-            page = sess.pop('first_page')
-            if int(page.get('remainTime') or 0) < 60:
+            page = sess.pop("first_page")
+            if int(page.get("remainTime") or 0) < 60:
                 if attempt < self.MAX_RETAKE:
-                    print('⚠️ 限时已耗尽（剩 %s 秒），自动重考（第 %d/%d 次）' % (
-                        page.get('remainTime'), attempt + 1, self.MAX_RETAKE))
+                    print(
+                        "⚠️ 限时已耗尽（剩 %s 秒），自动重考（第 %d/%d 次）"
+                        % (page.get("remainTime"), attempt + 1, self.MAX_RETAKE)
+                    )
                     time.sleep(1)
                     continue
-                print('⚠️ 限时耗尽，%d 次重考机会也已用完，本场放弃' % self.MAX_RETAKE)
+                print("⚠️ 限时耗尽，%d 次重考机会也已用完，本场放弃" % self.MAX_RETAKE)
                 return False
             self.__do_exam(sess, page)
-            if getattr(self, 'no_submit', False):
+            if getattr(self, "no_submit", False):
                 # 只做题不交卷：成绩未出，不查批阅页；日志照常落盘（未交卷视为不满分）
                 self.__exam_log_flush(sess, None)
                 return True
             # 考完输出成绩进度条（批阅中可能未出）
             score, left = self.__exam_result_info(sess)
             if score is None:
-                print('✍️ 成绩批阅中，稍后可在考试列表查看')
+                print("✍️ 成绩批阅中，稍后可在考试列表查看")
             else:
                 print(self.__exam_score_line(score, left))
             # save_log=True：不满分（含批阅中）才落盘答题日志，满分丢弃
@@ -2024,24 +2447,30 @@ class ChaoXing:
     # 保存失败自动重试（同题同答案最多发3次）；中途断链不交卷——已保存的答案
     # 仍在服务端，重新运行可从当前进度续作，避免剩下整卷空白
     def __do_exam(self, sess, page):
-        total = sess['total'] or 0
+        total = sess["total"] or 0
         idx = 0
         last_resp = None
         completed = False
         while page is not None:
             idx += 1
             self.__print_question(page)
-            picked, prompt = self.__ask_llm(page['stem'], page['options'],
-                                            qtype=page.get('qtype', ''),
-                                            type_name=page.get('type_name', ''))
+            picked, prompt = self.__ask_llm(
+                page["stem"],
+                page["options"],
+                qtype=page.get("qtype", ""),
+                type_name=page.get("type_name", ""),
+            )
             if not picked:
-                picked = self.__fallback_answer(page['options'], page.get('qtype', ''),
-                                                page.get('type_name', ''))
+                picked = self.__fallback_answer(
+                    page["options"], page.get("qtype", ""), page.get("type_name", "")
+                )
                 if picked:
-                    print('   🔒 模型未识别，按题型保底作答')
-            answer = ''.join(sorted(picked))  # 多选按字母序提交（与服务端 sortMultiAnswer 一致）
-            print('   答案：%s' % self.__fmt_answer(picked))
-            if getattr(self, 'save_log', False):
+                    print("   🔒 模型未识别，按题型保底作答")
+            answer = "".join(
+                sorted(picked)
+            )  # 多选按字母序提交（与服务端 sortMultiAnswer 一致）
+            print("   答案：%s" % self.__fmt_answer(picked))
+            if getattr(self, "save_log", False):
                 self.__exam_log_collect(sess, page, picked, prompt)
             resp = None
             for retry in range(3):  # 保存重试：同题同答案最多发 3 次
@@ -2049,18 +2478,21 @@ class ChaoXing:
                     resp = self.__save_exam_question(sess, page, answer, temp_save=True)
                 except requests.RequestException as e:
                     resp = None
-                    print('   ⚠️ 保存请求异常 %s（第 %d/3 次）' % (type(e).__name__, retry + 1))
-                if resp is not None and resp.get('status') == 'success':
+                    print(
+                        "   ⚠️ 保存请求异常 %s（第 %d/3 次）"
+                        % (type(e).__name__, retry + 1)
+                    )
+                if resp is not None and resp.get("status") == "success":
                     break
-                msg = str((resp or {}).get('msg', ''))
-                if '时间已用完' in msg or '已提交' in msg:
+                msg = str((resp or {}).get("msg", ""))
+                if "时间已用完" in msg or "已提交" in msg:
                     break  # 确定性失败（限时耗尽/已交卷），重试无意义
                 if retry < 2:
                     time.sleep(2)
-            if resp is None or resp.get('status') != 'success':
-                print('   ❌ 保存失败: %s' % ((resp or {}).get('msg') or '请求异常'))
+            if resp is None or resp.get("status") != "success":
+                print("   ❌ 保存失败: %s" % ((resp or {}).get("msg") or "请求异常"))
                 break
-            print('   ✅ 已保存（剩余 %s 秒）' % sess['rt'])
+            print("   ✅ 已保存（剩余 %s 秒）" % sess["rt"])
             last_resp = resp
             if total and idx >= total:
                 completed = True
@@ -2068,19 +2500,19 @@ class ChaoXing:
             time.sleep(0.8)  # 节流：翻题请求贴着保存发容易触发风控
             page = self.__fetch_exam_question(sess, idx)
             if page is None:
-                print('⚠️ 第 %d 题拉取失败，停止翻题' % (idx + 1))
+                print("⚠️ 第 %d 题拉取失败，停止翻题" % (idx + 1))
                 break
-        print('✍️ 作答完成：%d 题（共 %s 题）' % (idx, total or '?'))
+        print("✍️ 作答完成：%d 题（共 %s 题）" % (idx, total or "?"))
         if completed or not total:
             # 正常答满才交卷；题量未知时保守视为完成
-            if getattr(self, 'no_submit', False):
-                print('✈️ 已答完但未交卷：答案已保存在服务端，可自行检查后手动交卷')
+            if getattr(self, "no_submit", False):
+                print("✈️ 已答完但未交卷：答案已保存在服务端，可自行检查后手动交卷")
             elif last_resp is not None:
                 self.__submit_exam(sess, page, idx)
             else:
-                print('⚠️ 一题都没保存成功，跳过交卷')
+                print("⚠️ 一题都没保存成功，跳过交卷")
         elif last_resp is not None:
-            print('⚠️ 中途断链未交卷：已保存的答案仍在，重新运行可从当前进度续作')
+            print("⚠️ 中途断链未交卷：已保存的答案仍在，重新运行可从当前进度续作")
         return True
 
     # 27.6.1、交卷：对当前题再发一次 tempSave=false 即服务端交卷；交卷不可逆。
@@ -2091,26 +2523,30 @@ class ChaoXing:
     # 最终成绩/剩余重考次数由 finish_exam 尾部 __exam_result_info 输出
     def __submit_exam(self, sess, page, qidx):
         if page is None:
-            print('❌ 无题面可交卷')
+            print("❌ 无题面可交卷")
             return False
-        print('📤 正在交卷...')
-        msg = ''
+        print("📤 正在交卷...")
+        msg = ""
         for attempt in range(3):
             resp = self.__save_exam_question(sess, page, None, temp_save=False)
             # 成功判定兼容两种响应：status=submitted/forceSubmitted，
             # 或 msg 直接是「提交成功」（实测同一服务端两种结构都出过，
             # 只认 status 会把成功的交卷误判成失败）
-            if (str(resp.get('status')) in ('submitted', 'forceSubmitted')
-                    or '提交成功' in str(resp.get('msg') or '')):
-                print('✅ 交卷成功')
+            if str(resp.get("status")) in (
+                "submitted",
+                "forceSubmitted",
+            ) or "提交成功" in str(resp.get("msg") or ""):
+                print("✅ 交卷成功")
                 return True
-            msg = str(resp.get('msg') or resp.get('status') or '')
-            if '10分钟' not in msg:
+            msg = str(resp.get("msg") or resp.get("status") or "")
+            if "10分钟" not in msg:
                 break
-            wait = 605 - (time.time() - sess.get('enter_time', time.time()))
+            wait = 605 - (time.time() - sess.get("enter_time", time.time()))
             if wait <= 0:
                 wait = 60  # 本地起点晚于服务端计时起点时兜底再等一轮
-            print('⏳ 服务端限制进入 10 分钟内禁止交卷，等待 %d 秒后自动交卷' % int(wait))
+            print(
+                "⏳ 服务端限制进入 10 分钟内禁止交卷，等待 %d 秒后自动交卷" % int(wait)
+            )
             # 挂机等待期间每 60 秒报一次剩余（节奏与刷视频 60 秒心跳输出一致）；
             # 触发按进度差算并锚记已等时长，sleep 粒度/输出行耗时不会累积漂移
             start_wait = time.time()
@@ -2121,20 +2557,22 @@ class ChaoXing:
                 if remain <= 0:
                     break
                 if elapsed - last_mark >= 60:
-                    print('   ⏳ 剩余 %d 秒' % int(remain))
+                    print("   ⏳ 剩余 %d 秒" % int(remain))
                     last_mark = elapsed
                 time.sleep(1)
-            fresh = self.__fetch_exam_question(sess, qidx - 1)  # 链三元组已过期，重新拉当前题刷新
+            fresh = self.__fetch_exam_question(
+                sess, qidx - 1
+            )  # 链三元组已过期，重新拉当前题刷新
             if fresh is not None:
                 page = fresh
-        print('❌ 交卷未成功: %s' % msg)
+        print("❌ 交卷未成功: %s" % msg)
         return False
 
     # 统一章节行：✅/❌ + 章节名 + （已完成 / 差 N 个任务点）；progress 带 id，main 不带
     def __chapter_line(self, task_id, name, cnt, with_id=True):
-        head = '[%s] ' % task_id if with_id else ''
-        tail = '已完成' if cnt == 0 else '差 %d 个任务点' % cnt
-        return '%s %s%s（%s）' % ('✅' if cnt == 0 else '❌', head, name, tail)
+        head = "[%s] " % task_id if with_id else ""
+        tail = "已完成" if cnt == 0 else "差 %d 个任务点" % cnt
+        return "%s %s%s（%s）" % ("✅" if cnt == 0 else "❌", head, name, tail)
 
     # 26、查课程完成进度：show_details=False 列章节名+作业名（作业只列有什么，
     # 不带完成度状态，快速看结构）；
@@ -2149,8 +2587,8 @@ class ChaoXing:
         user.get_course_list()
         response = user.get_course(index - 1)
         user.get_capter_list(response)
-        print('🚀 当前课程：%s' % user.course_name)
-        print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
+        print("🚀 当前课程：%s" % user.course_name)
+        print("📚 课程章节列表（共%d章）:" % len(user.capter_list))
         if not show_details:
             # 简版：章节名 + 作业名（作业只列有什么，不带完成度状态）
             for _, name in user.capter_list:
@@ -2158,10 +2596,13 @@ class ChaoXing:
             user.__print_work_status(names_only=True)
             return
         for task_id, name in user.capter_list:
-            print(user.__chapter_line(task_id, name,
-                                      user.chapter_status.get(str(task_id), 0)))
+            print(
+                user.__chapter_line(
+                    task_id, name, user.chapter_status.get(str(task_id), 0)
+                )
+            )
         pts_done, pts_total = user.course_pts or (0, 0)
-        print(user.__progress_bar(pts_done, pts_total, label='🔴 任务点'))
+        print(user.__progress_bar(pts_done, pts_total, label="🔴 任务点"))
         user.__print_work_status()
         user.__print_exam_list()
 
@@ -2172,10 +2613,10 @@ class ChaoXing:
         user = cls(username, password)
         user.login()
         user.get_course_list()
-        print('📚 课程列表（共%d门）:' % len(user.course_list))
+        print("📚 课程列表（共%d门）:" % len(user.course_list))
         courses = []
         for index, (title, _) in enumerate(user.course_list, 1):
-            print('%d. %s' % (index, title))
+            print("%d. %s" % (index, title))
             courses.append((index, title))
         return courses
 
@@ -2185,20 +2626,24 @@ class ChaoXing:
         try:
             exams = self.get_exam_list()
         except Exception as e:
-            print('✍️ 考试列表获取失败: %s' % type(e).__name__)
+            print("✍️ 考试列表获取失败: %s" % type(e).__name__)
             return
         if not exams:
             return
-        print('✍️ 考试列表（共%d场）:' % len(exams))
+        print("✍️ 考试列表（共%d场）:" % len(exams))
         for ex in exams:
-            done = '完成' in ex['status'] or '批阅' in ex['status']
-            score = ex.get('score')
-            seg = ['上次成绩 %s 分' % score if done and score is not None
-                   else (ex['status'] or '未知')]
-            seg.append('截止 %s' % (ex['deadline'] or '')[:16])
-            print('%s [%s] %s（%s）' % (
-                '✅' if done else '❌',
-                ex['exam_id'], ex['name'], '，'.join(seg)))
+            done = "完成" in ex["status"] or "批阅" in ex["status"]
+            score = ex.get("score")
+            seg = [
+                "上次成绩 %s 分" % score
+                if done and score is not None
+                else (ex["status"] or "未知")
+            ]
+            seg.append("截止 %s" % (ex["deadline"] or "")[:16])
+            print(
+                "%s [%s] %s（%s）"
+                % ("✅" if done else "❌", ex["exam_id"], ex["name"], "，".join(seg))
+            )
 
     # 任务点计数：按 mode 统计 (已完成数, 总数)。1个视频/1个文档/1个测验各算1个任务点：
     # 视频 isPassed / 文档测验 job!=true 视为完成（与 finish_* 的跳过判定一致）；
@@ -2206,47 +2651,65 @@ class ChaoXing:
     @staticmethod
     def __count_pts(vids, docs, quizzes, mode):
         n_done = n_all = 0
-        if mode in ('all', 'watch', 'course'):
+        if mode in ("all", "watch", "course"):
             n_all += len(vids)
-            n_done += sum(1 for a in vids if a.get('isPassed'))
+            n_done += sum(1 for a in vids if a.get("isPassed"))
             n_all += len(docs)
-            n_done += sum(1 for a in docs if a.get('job') is not True)
-        if mode in ('all', 'test', 'course'):
+            n_done += sum(1 for a in docs if a.get("job") is not True)
+        if mode in ("all", "test", "course"):
             n_all += len(quizzes)
-            n_done += sum(1 for a in quizzes if a.get('job') is not True)
+            n_done += sum(1 for a in quizzes if a.get("job") is not True)
         return n_done, n_all
 
     # 27.1.6、已交卷考试的最终成绩：look 批阅页「最终成绩 X 分」（= 历次最高分）。
     # 用于不满分重考判定；页面未渲染出成绩（刚交卷/批阅中）返回 None
     def __get_exam_score(self, ex):
-        url = ('https://mooc1.chaoxing.com/exam-ans/exam/test/look'
-               '?courseId=%s&classId=%s&examId=%s&examAnswerId=%s&cpi=%s' % (
-                   self.courseid, self.clazzid, ex['exam_id'], ex['relation_id'], self.cpi))
-        r = self.__risky_req('GET', url, headers={'Referer': 'https://mooc1.chaoxing.com/'})
-        m = re.search(r'最终成绩<b[^>]*>([\d.]+)</b>分', r.text)
+        url = (
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/look"
+            "?courseId=%s&classId=%s&examId=%s&examAnswerId=%s&cpi=%s"
+            % (self.courseid, self.clazzid, ex["exam_id"], ex["relation_id"], self.cpi)
+        )
+        r = self.__risky_req(
+            "GET", url, headers={"Referer": "https://mooc1.chaoxing.com/"}
+        )
+        m = re.search(r"最终成绩<b[^>]*>([\d.]+)</b>分", r.text)
         return float(m.group(1)) if m else None
 
     # 27.1.7、考完收尾信息：look 批阅页一次拿最终成绩与剩余重考次数
     # （「最终成绩X分」「允许重考N次，已重考M次」，aria-label 与 span 分隔两种形态都匹配；
     # 未交卷时成绩未出为 None，剩余次数照常可取）
     def __exam_result_info(self, sess):
-        url = ('https://mooc1.chaoxing.com/exam-ans/exam/test/look'
-               '?courseId=%s&classId=%s&examId=%s&examAnswerId=%s&cpi=%s' % (
-                   self.courseid, self.clazzid, sess['exam_id'], sess['answer_id'], self.cpi))
-        r = self.__risky_req('GET', url, headers={'Referer': 'https://mooc1.chaoxing.com/'})
-        sm = re.search(r'最终成绩<b[^>]*>([\d.]+)</b>分', r.text)
-        rm = re.search(r'允许重考(?:<[^>]*>)?(\d+)(?:</[^>]*>)?次，已重考(?:<[^>]*>)?(\d+)', r.text)
-        return (float(sm.group(1)) if sm else None,
-                int(rm.group(1)) - int(rm.group(2)) if rm else None)
+        url = (
+            "https://mooc1.chaoxing.com/exam-ans/exam/test/look"
+            "?courseId=%s&classId=%s&examId=%s&examAnswerId=%s&cpi=%s"
+            % (
+                self.courseid,
+                self.clazzid,
+                sess["exam_id"],
+                sess["answer_id"],
+                self.cpi,
+            )
+        )
+        r = self.__risky_req(
+            "GET", url, headers={"Referer": "https://mooc1.chaoxing.com/"}
+        )
+        sm = re.search(r"最终成绩<b[^>]*>([\d.]+)</b>分", r.text)
+        rm = re.search(
+            r"允许重考(?:<[^>]*>)?(\d+)(?:</[^>]*>)?次，已重考(?:<[^>]*>)?(\d+)", r.text
+        )
+        return (
+            float(sm.group(1)) if sm else None,
+            int(rm.group(1)) - int(rm.group(2)) if rm else None,
+        )
 
     # 成绩行：满分 🎉（与测验「🎉 本轮全部答对！」一致），不满分 🎯；
     # %s 保序 float 自带小数位（37.0），未出成绩不走这里
     @classmethod
     def __exam_score_line(cls, score, left):
         if score >= cls.EXAM_FULL_SCORE:
-            return '🎉 考试成绩：%s 分（满分）' % score
-        tail = '' if left is None else '（剩余重考 %d 次）' % left
-        return '🎯 考试成绩：%s 分%s' % (score, tail)
+            return "🎉 考试成绩：%s 分（满分）" % score
+        tail = "" if left is None else "（剩余重考 %d 次）" % left
+        return "🎯 考试成绩：%s 分%s" % (score, tail)
 
     # 27.6.2、答题日志（save_log=True）：作答时逐题把题目+答案收进内存，考完拿到成绩
     # 后才决定落盘——不满分（含批阅中未出分）才写入 考试答题日志/<exam_id>_<时间戳>.txt，
@@ -2254,32 +2717,36 @@ class ChaoXing:
     # 每轮不满分独立存档，历次重考互不覆盖，文件头带本轮成绩；只记题目相关内容
     # （题干/选项/答案），提示词是否一并写入跟随 show_prompt（与终端打印同一条件）
     def __exam_log_collect(self, sess, page, picked, prompt):
-        lines = ['─' * 46]
+        lines = ["─" * 46]
         lines += self.__question_lines(page)
-        lines.append('答案：%s' % self.__fmt_answer(picked))
-        if getattr(self, 'show_prompt', False) and prompt:
-            lines += ['【提示词】', prompt]
-        sess.setdefault('log_lines', []).append('\n'.join(lines))
+        lines.append("答案：%s" % self.__fmt_answer(picked))
+        if getattr(self, "show_prompt", False) and prompt:
+            lines += ["【提示词】", prompt]
+        sess.setdefault("log_lines", []).append("\n".join(lines))
 
     # 落盘：文件名带时间戳（每轮一个新文件，历次重考/续作互不覆盖）；
     # 落盘后终端输出一行提示，让保存动作本身有输出反馈
     def __exam_log_flush(self, sess, score):
-        if not getattr(self, 'save_log', False):
+        if not getattr(self, "save_log", False):
             return
-        lines = sess.pop('log_lines', None)
+        lines = sess.pop("log_lines", None)
         if not lines:
             return
         if score is not None and score >= self.EXAM_FULL_SCORE:
             return
         if not os.path.isdir(self.EXAM_LOG_DIR):
             os.makedirs(self.EXAM_LOG_DIR)
-        path = os.path.join(self.EXAM_LOG_DIR, '%s_%s.txt' % (
-            sess['exam_id'], time.strftime('%Y%m%d_%H%M%S')))
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write('===== 成绩 %s =====\n' % (
-                '批阅中' if score is None else '%s 分' % score))
-            f.write('\n'.join(lines) + '\n')
-        print('💾 答题日志已保存: %s' % path)
+        path = os.path.join(
+            self.EXAM_LOG_DIR,
+            "%s_%s.txt" % (sess["exam_id"], time.strftime("%Y%m%d_%H%M%S")),
+        )
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(
+                "===== 成绩 %s =====\n"
+                % ("批阅中" if score is None else "%s 分" % score)
+            )
+            f.write("\n".join(lines) + "\n")
+        print("💾 答题日志已保存: %s" % path)
 
     # 27.7、跑全部待做考试：未做的直接做。已完成的是否重考由 retake 决定——
     # main 全流程结尾（mode='all'）retake=False 只做没考过的，做过的一律不碰；
@@ -2289,81 +2756,103 @@ class ChaoXing:
         try:
             exams = self.get_exam_list()
         except Exception as e:
-            print('✍️ 考试列表获取失败: %s' % type(e).__name__)
+            print("✍️ 考试列表获取失败: %s" % type(e).__name__)
             return
         todo = []
         for ex in exams:
-            st = ex['status']
-            if '未开始' in st:
+            st = ex["status"]
+            if "未开始" in st:
                 continue  # 未开始的考试不进入
-            if '完成' not in st and '批阅' not in st:
+            if "完成" not in st and "批阅" not in st:
                 todo.append(ex)  # 未做：直接做
                 continue
             if not retake:
                 continue  # 全流程：做过的不重考
             # mode='exam' 批量点名跑考试：考过不满分的直接重考刷分，
             # 分数优先用列表自带，缺失才拉批阅页补
-            score = ex.get('score')
+            score = ex.get("score")
             if score is None:
                 score = self.__get_exam_score(ex)
             if score is None:
                 continue  # 成绩未出（刚交卷/批阅中），不盲考
             if score >= self.EXAM_FULL_SCORE:
                 continue  # 满分无提升空间
-            ex['score'] = score
+            ex["score"] = score
             todo.append(ex)
         if not todo:
-            print('✍️ 没有待做的考试')
+            print("✍️ 没有待做的考试")
             return
         for ex in todo:
-            head = '🚀 进入考试 %s' % ex['name']
-            if 'score' in ex:
-                head += '（上次成绩 %s 分，重考刷分）' % ex['score']
+            head = "🚀 进入考试 %s" % ex["name"]
+            if "score" in ex:
+                head += "（上次成绩 %s 分，重考刷分）" % ex["score"]
             else:
-                head += '（截止 %s）' % (ex['deadline'] or '')[:16]
+                head += "（截止 %s）" % (ex["deadline"] or "")[:16]
             print(head)
             try:
-                self.finish_exam(self.courseid, self.clazzid, ex['exam_id'], self.cpi,
-                                 first_retake='score' in ex)  # 带分数=已完成重考，首轮即走重考入口
+                self.finish_exam(
+                    self.courseid,
+                    self.clazzid,
+                    ex["exam_id"],
+                    self.cpi,
+                    first_retake="score" in ex,
+                )  # 带分数=已完成重考，首轮即走重考入口
             except Exception as e:
                 # 单场考试意外炸了只放弃这一场，剩余考试继续
-                print('❌ 考试 %s 异常中断: %s: %s' % (ex['name'], type(e).__name__, e))
+                print("❌ 考试 %s 异常中断: %s: %s" % (ex["name"], type(e).__name__, e))
 
     # ---------- 作业（work/list -> work/task -> dowork，只暂存不提交） ----------
 
     # 28.0、作业列表页 HTML：先过 stucoursemiddle 中转拿 stu 页（enc 每次访问都会重新
     # 生成，用旧 enc 直接访问会「参数验证不通过」），再取 stu 页的 workEnc 拼列表地址
     def __get_work_list_html(self):
-        r = self.__risky_req('GET', 'https://mooc1.chaoxing.com/visit/stucoursemiddle'
-                             '?courseid=%s&clazzid=%s&cpi=%s&ismooc2=1&v=2'
-                             % (self.courseid, self.clazzid, self.cpi),
-                             headers={'Referer': 'https://mooc2-ans.chaoxing.com/'})
-        enc_m = re.search(r'[?&]enc=([0-9a-f]+)', r.url)
+        r = self.__risky_req(
+            "GET",
+            "https://mooc1.chaoxing.com/visit/stucoursemiddle"
+            "?courseid=%s&clazzid=%s&cpi=%s&ismooc2=1&v=2"
+            % (self.courseid, self.clazzid, self.cpi),
+            headers={"Referer": "https://mooc2-ans.chaoxing.com/"},
+        )
+        enc_m = re.search(r"[?&]enc=([0-9a-f]+)", r.url)
         work_m = re.search(r'id="workEnc"[^>]*value="([0-9a-f]+)"', r.text)
         if not (enc_m and work_m):
-            print('❌ 作业入口获取失败（stu 页缺 enc/workEnc）')
+            print("❌ 作业入口获取失败（stu 页缺 enc/workEnc）")
             return None
-        url = ('https://mooc1.chaoxing.com/mooc2/work/list?courseId=%s&classId=%s&cpi=%s'
-               '&ut=s&t=%d&stuenc=%s&enc=%s'
-               % (self.courseid, self.clazzid, self.cpi, int(time.time() * 1000),
-                  enc_m.group(1), work_m.group(1)))
-        r2 = self.__risky_req('GET', url, headers={'Referer': r.url})
+        url = (
+            "https://mooc1.chaoxing.com/mooc2/work/list?courseId=%s&classId=%s&cpi=%s"
+            "&ut=s&t=%d&stuenc=%s&enc=%s"
+            % (
+                self.courseid,
+                self.clazzid,
+                self.cpi,
+                int(time.time() * 1000),
+                enc_m.group(1),
+                work_m.group(1),
+            )
+        )
+        r2 = self.__risky_req("GET", url, headers={"Referer": r.url})
         return r2.text
 
     # 28.1、解析作业列表：li[data]=work/task 地址（workId=作业 ID），aria-label=「名称 ; 状态（未交/已完成）」
     @staticmethod
     def __parse_work_list(html):
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         out = []
         for li in soup.select('li[onclick*="goTask"]'):
-            url = (li.get('data') or '').strip()
-            if 'work/task' not in url:
+            url = (li.get("data") or "").strip()
+            if "work/task" not in url:
                 continue
-            label = (li.get('aria-label') or '').replace('\n', ' ').strip()
-            name, _, status = label.partition(';')
-            wid = re.search(r'workId=(\d+)', url)
-            out.append({'url': url, 'name': name.strip(' ;'), 'status': status.strip(),
-                        'work_id': wid.group(1) if wid else ''})
+            label = (li.get("aria-label") or "").replace("\n", " ").strip()
+            name, _, status = label.partition(";")
+            wid = re.search(r"workId=(\d+)", url)
+            out.append(
+                {
+                    "url": url,
+                    "name": name.strip(" ;"),
+                    "status": status.strip(),
+                    "work_id": wid.group(1) if wid else "",
+                }
+            )
         return out
 
     # 28.2、解析 dowork 题面：div.questionLi（typename/data=qid）。
@@ -2372,126 +2861,165 @@ class ChaoXing:
     # 填空题每空一个 UEditor，落盘字段是 answerEditor{qid}{空序}
     @staticmethod
     def __parse_work(html):
-        soup = BeautifulSoup(html, 'html.parser')
-        form = soup.find('form', id='submitForm')
+        soup = BeautifulSoup(html, "html.parser")
+        form = soup.find("form", id="submitForm")
         if form is None:
             return None
         fields = {}
-        for el in form.find_all(['input', 'textarea']):
-            nm = el.get('name')
+        for el in form.find_all(["input", "textarea"]):
+            nm = el.get("name")
             if nm:
-                fields[nm] = el.get('value', '') if el.name == 'input' else (el.text or '')
+                fields[nm] = (
+                    el.get("value", "") if el.name == "input" else (el.text or "")
+                )
         m = re.search(r'\$\("#questionIds"\)\.val\("([^"]*)"\)', html)
         questions = []
-        for div in soup.select('div.questionLi'):
-            qid = div.get('data') or ''
+        for div in soup.select("div.questionLi"):
+            qid = div.get("data") or ""
             if not qid:
                 continue
-            wtype = (div.select_one('input[id^="answertype"]') or {}).get('value', '')
-            typename = div.get('typename') or ''
-            stem_el = div.select_one('h3.mark_name')
-            stem = stem_el.get_text(' ', strip=True) if stem_el is not None else ''
-            q = {'qid': qid, 'wtype': wtype, 'typename': typename, 'stem': stem,
-                 'options': [], 'datamap': {}, 'blanks': 0}
-            if wtype in ('0', '1', '3'):
-                for i, box in enumerate(div.select(
-                        '[onclick*="addChoice"], [onclick*="addMultipleChoice"]')):
-                    span = box.select_one('span[data]')
-                    text_el = box.select_one('.answer_p')
+            wtype = (div.select_one('input[id^="answertype"]') or {}).get("value", "")
+            typename = div.get("typename") or ""
+            stem_el = div.select_one("h3.mark_name")
+            stem = stem_el.get_text(" ", strip=True) if stem_el is not None else ""
+            q = {
+                "qid": qid,
+                "wtype": wtype,
+                "typename": typename,
+                "stem": stem,
+                "options": [],
+                "datamap": {},
+                "blanks": 0,
+            }
+            if wtype in ("0", "1", "3"):
+                for i, box in enumerate(
+                    div.select('[onclick*="addChoice"], [onclick*="addMultipleChoice"]')
+                ):
+                    span = box.select_one("span[data]")
+                    text_el = box.select_one(".answer_p")
                     # 显示字母 A/B/C 顺排（页面显示序），data 值是乱序对应的真选项标号
                     dl = chr(65 + i)
-                    q['options'].append((
-                        dl,
-                        text_el.get_text(' ', strip=True) if text_el is not None else ''))
-                    q['datamap'][dl] = (span.get('data') if span is not None else '') or ''
-            elif wtype == '2':
+                    q["options"].append(
+                        (
+                            dl,
+                            text_el.get_text(" ", strip=True)
+                            if text_el is not None
+                            else "",
+                        )
+                    )
+                    q["datamap"][dl] = (
+                        span.get("data") if span is not None else ""
+                    ) or ""
+            elif wtype == "2":
                 sz = div.select_one('input[name^="tiankongsize"]')
                 try:
-                    q['blanks'] = int(sz.get('value', '1'))
+                    q["blanks"] = int(sz.get("value", "1"))
                 except (ValueError, TypeError):
-                    q['blanks'] = 1
+                    q["blanks"] = 1
             questions.append(q)
-        return {'action': form.get('action', ''), 'fields': fields,
-                'qids': m.group(1).strip(' ,') if m else '', 'questions': questions}
+        return {
+            "action": form.get("action", ""),
+            "fields": fields,
+            "qids": m.group(1).strip(" ,") if m else "",
+            "questions": questions,
+        }
 
     # 28.3、单份作业：逐题 LLM 作答 -> 组表单 -> 单次 POST（暂存与提交同一表单，
     # 仅 pyFlag 不同：1=暂存、空=提交，saveStatus 恒为 1，与页面按钮一致）。
     # 选择/判断提交 answer{qid}=data 值按 DOM 序拼接（与页面 addChoice 行为一致）；
     # 填空提交 answerEditor{qid}{空序}=<p>答案</p>（与 UEditor sync 后的形态一致）
     def __do_work(self, work, submit=False):
-        r = self.__risky_req('GET', work['url'],
-                             headers={'Referer': 'https://mooc1.chaoxing.com/mooc2/work/list'})
+        r = self.__risky_req(
+            "GET",
+            work["url"],
+            headers={"Referer": "https://mooc1.chaoxing.com/mooc2/work/list"},
+        )
         page = self.__parse_work(r.text)
         if page is None:
-            print('   ❌ 作业题面解析失败（未登录/页面改版）')
+            print("   ❌ 作业题面解析失败（未登录/页面改版）")
             return False
-        if re.search(r'font-cxsecret|data:application/font-ttf', r.text):
+        if re.search(r"font-cxsecret|data:application/font-ttf", r.text):
             # 作业卷同样可能带字体反爬：抽字体建映射后解码
             font = self.__extract_secret_font(r.text)
             if font:
                 wmap = self.__build_secret_map(font)
-                for q in page['questions']:
-                    q['stem'] = self.__decode_cxsecret(q['stem'], wmap)
-                    q['options'] = [(d, self.__decode_cxsecret(t, wmap))
-                                    for d, t in q['options']]
-        print('   📄 共 %d 题' % len(page['questions']))
+                for q in page["questions"]:
+                    q["stem"] = self.__decode_cxsecret(q["stem"], wmap)
+                    q["options"] = [
+                        (d, self.__decode_cxsecret(t, wmap)) for d, t in q["options"]
+                    ]
+        print("   📄 共 %d 题" % len(page["questions"]))
         extra = {}
-        for q in page['questions']:
+        for q in page["questions"]:
             self.__print_question(q)
-            if q['wtype'] in ('0', '1', '3'):
-                picked, _p = self.__ask_llm(q['stem'], q['options'],
-                                            qtype=q['wtype'], type_name=q['typename'])
+            if q["wtype"] in ("0", "1", "3"):
+                picked, _p = self.__ask_llm(
+                    q["stem"], q["options"], qtype=q["wtype"], type_name=q["typename"]
+                )
                 if not picked:
                     # 与测验一致：模型未识别时按题型保底（单选A/多选全选/判断A）
-                    picked = self.__fallback_answer(q['options'], q['wtype'],
-                                                    q['typename'])
+                    picked = self.__fallback_answer(
+                        q["options"], q["wtype"], q["typename"]
+                    )
                     if picked:
-                        print('   🔒 模型未识别，按题型保底作答')
+                        print("   🔒 模型未识别，按题型保底作答")
                 # 提交值：显示字母映射回 data，按显示序（=页面 DOM 序）拼接，
                 # 与页面 addChoice 的拼接行为一致
-                val = ''.join(q['datamap'][dl] for dl in sorted(picked)
-                              if dl in q['datamap'])
-                extra['answer' + q['qid']] = val
-                print('   答案：%s' % self.__fmt_answer(picked))
-            elif q['wtype'] == '2':
-                ans, _p = self.__ask_llm(q['stem'], [], qtype=q['wtype'],
-                                         type_name=q['typename'])
+                val = "".join(
+                    q["datamap"][dl] for dl in sorted(picked) if dl in q["datamap"]
+                )
+                extra["answer" + q["qid"]] = val
+                print("   答案：%s" % self.__fmt_answer(picked))
+            elif q["wtype"] == "2":
+                ans, _p = self.__ask_llm(
+                    q["stem"], [], qtype=q["wtype"], type_name=q["typename"]
+                )
                 # 一空一对：模型偶尔会在思考过程里多包一对 ##，每空只取第一个
-                per_blank = [ans[j] if j < len(ans) else '' for j in range(q['blanks'])]
+                per_blank = [ans[j] if j < len(ans) else "" for j in range(q["blanks"])]
                 for j, a in enumerate(per_blank, 1):
-                    extra['answerEditor%d%d' % (int(q['qid']), j)] = '<p>%s</p>' % a
-                print('   答案：%s' % self.__fmt_answer(per_blank))
+                    extra["answerEditor%d%d" % (int(q["qid"]), j)] = "<p>%s</p>" % a
+                print("   答案：%s" % self.__fmt_answer(per_blank))
             else:
-                print('   答案：（暂不支持，留空）')
-        data = dict(page['fields'])
+                print("   答案：（暂不支持，留空）")
+        data = dict(page["fields"])
         data.update(extra)
         # 暂存与提交是同一个 POST，仅 pyFlag 不同（1=暂存，空=提交，与页面按钮一致）；
         # 提交时直接以提交形态发一次，不再先暂存再提交
-        pyflag = '' if submit else '1'
-        data['pyFlag'] = pyflag
+        pyflag = "" if submit else "1"
+        data["pyFlag"] = pyflag
         # 题目 ID 串：页面隐藏域 id=questionIds、name=answerwqbid，服务端按它核对作答
         # （缺了会报「无效的参数：code-1」——浏览器实测确认）
-        if page['qids']:
-            data['answerwqbid'] = page['qids']
+        if page["qids"]:
+            data["answerwqbid"] = page["qids"]
         # 表单 action 是相对路径（/mooc-ans/work/addStudentWorkNewWeb?...），必须拼主机名
-        url = urljoin('https://mooc1.chaoxing.com', page['action']) + \
-            '&pyFlag=%s&ua=pc&formType=post&saveStatus=1&version=1' % pyflag
-        r2 = self.__risky_req('POST', url, data=data, headers={
-            'Referer': r.url,
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'})
+        url = (
+            urljoin("https://mooc1.chaoxing.com", page["action"])
+            + "&pyFlag=%s&ua=pc&formType=post&saveStatus=1&version=1" % pyflag
+        )
+        r2 = self.__risky_req(
+            "POST",
+            url,
+            data=data,
+            headers={
+                "Referer": r.url,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            },
+        )
         try:
             resp = r2.json()
         except ValueError:
-            resp = {'status': False, 'msg': r2.text[:120]}
-        if not resp.get('status'):
-            print('   ❌ %s失败: %s' % ('提交' if submit else '暂存',
-                                       resp.get('msg') or r2.text[:120]))
+            resp = {"status": False, "msg": r2.text[:120]}
+        if not resp.get("status"):
+            print(
+                "   ❌ %s失败: %s"
+                % ("提交" if submit else "暂存", resp.get("msg") or r2.text[:120])
+            )
             return False
         if submit:
-            print('   📮 作业已提交')
+            print("   📮 作业已提交")
         else:
-            print('   💾 已暂存（不提交）')
+            print("   💾 已暂存（不提交）")
         return True
 
     # 28.45、作业清单：拉列表、打印作业清单，返回待做列表
@@ -2506,19 +3034,19 @@ class ChaoXing:
             key = str(only_id)
             hit = None
             if key.isdigit():
-                hit = next((w for w in works if w['work_id'] == key), None)
+                hit = next((w for w in works if w["work_id"] == key), None)
             if hit is None:
-                hit = next((w for w in works if key in w['name']), None)
+                hit = next((w for w in works if key in w["name"]), None)
             if hit is None:
-                print('❌ 没找到作业「%s」（列表里共 %d 份）' % (key, len(works)))
+                print("❌ 没找到作业「%s」（列表里共 %d 份）" % (key, len(works)))
                 return []
             pending = [hit]
         else:
-            pending = [w for w in works if '未交' in w['status']]
+            pending = [w for w in works if "未交" in w["status"]]
         if show:
-            print('📋 作业清单')
+            print("📋 作业清单")
             for w in pending:
-                print('   %s' % w['name'])
+                print("   %s" % w["name"])
         return pending
 
     # 28.46、作业完成度列表：📝 标题 + 每份一行 ✅/❌ [workId] 名称（状态），
@@ -2530,18 +3058,24 @@ class ChaoXing:
             html = self.__get_work_list_html()
             works = self.__parse_work_list(html) if html else []
         except Exception as e:
-            print('📝 作业列表获取失败: %s' % type(e).__name__)
+            print("📝 作业列表获取失败: %s" % type(e).__name__)
             return
         if not works:
             return
-        print('📝 作业列表（共%d份）:' % len(works))
+        print("📝 作业列表（共%d份）:" % len(works))
         for w in works:
             if names_only:
-                print('   %s' % w['name'])
+                print("   %s" % w["name"])
             else:
-                print('%s [%s] %s（%s）' % (
-                    '✅' if '完成' in w['status'] else '❌',
-                    w['work_id'], w['name'], w['status'] or '未知'))
+                print(
+                    "%s [%s] %s（%s）"
+                    % (
+                        "✅" if "完成" in w["status"] else "❌",
+                        w["work_id"],
+                        w["name"],
+                        w["status"] or "未知",
+                    )
+                )
 
     # 28.4、跑作业（mode=homework 或点名 homework_id 时调用；submit=True 作答后提交，
     # False 只暂存）。only_id 点名单份作业：workId 精确匹配，非数字按名称模糊匹配，
@@ -2551,12 +3085,12 @@ class ChaoXing:
         if not pending:
             return
         for w in pending:
-            print('📝%s 开始作答' % w['name'])
+            print("📝%s 开始作答" % w["name"])
             try:
                 self.__do_work(w, submit=submit)
             except Exception as e:
                 # 单份作业意外炸了只放弃这一份，剩余作业继续
-                print('   ❌ 作业异常中断: %s: %s' % (type(e).__name__, e))
+                print("   ❌ 作业异常中断: %s: %s" % (type(e).__name__, e))
             time.sleep(1)
 
     # main：index 是第几个课程；mode='all' 全流程（默认，章节任务 + 待做考试）
@@ -2578,9 +3112,20 @@ class ChaoXing:
     # 扫描阶段零逐章请求：全部数据来自章节树（每章待完成任务点数+页面头部总进度），
     # 待完成章进入后才拉任务明细，输出清单并逐个执行
     @classmethod
-    def main(cls, username, password, index, mode='all', chapter_id=None,
-             homework_id=None, exam_id=None, show_prompt=False, save_log=False,
-             no_submit=False, full_score=False):
+    def main(
+        cls,
+        username,
+        password,
+        index,
+        mode="all",
+        chapter_id=None,
+        homework_id=None,
+        exam_id=None,
+        show_prompt=False,
+        save_log=False,
+        no_submit=False,
+        full_score=False,
+    ):
         user = cls(username, password)
         user.login()
         user.get_course_list()
@@ -2595,25 +3140,37 @@ class ChaoXing:
         user.no_submit = no_submit
         # 点名参数传了即进入对应模式：homework_id 只做这一份作业（不必传
         # mode='homework'），exam_id 只考这一场考试（不必传 mode='exam'）
-        if mode == 'homework' or homework_id:
-            user.__run_homeworks(submit=not no_submit, show_list=True,
-                                 only_id=homework_id)
+        if mode == "homework" or homework_id:
+            user.__run_homeworks(
+                submit=not no_submit, show_list=True, only_id=homework_id
+            )
             return
-        if mode == 'exam' or exam_id:
+        if mode == "exam" or exam_id:
             if exam_id:
                 # 单场模式：点名要考的不询问，考过的直接走重考入口
                 try:
-                    ex = next((e for e in user.get_exam_list()
-                               if e['exam_id'] == str(exam_id)), None)
+                    ex = next(
+                        (
+                            e
+                            for e in user.get_exam_list()
+                            if e["exam_id"] == str(exam_id)
+                        ),
+                        None,
+                    )
                 except Exception:
                     ex = None
                 if ex:
-                    head = '🚀 进入考试 %s' % ex['name']
-                    if ex.get('score') is not None:
-                        head += '（上次成绩 %s 分，直接重考）' % ex['score']
+                    head = "🚀 进入考试 %s" % ex["name"]
+                    if ex.get("score") is not None:
+                        head += "（上次成绩 %s 分，直接重考）" % ex["score"]
                     print(head)
-                user.finish_exam(user.courseid, user.clazzid, exam_id, user.cpi,
-                                 first_retake=bool(ex and ex.get('score') is not None))
+                user.finish_exam(
+                    user.courseid,
+                    user.clazzid,
+                    exam_id,
+                    user.cpi,
+                    first_retake=bool(ex and ex.get("score") is not None),
+                )
             else:
                 # mode='exam' 批量：也是点名跑考试——未做的做、考过不满分的直接重考刷分
                 user.__run_pending_exams(retake=True)
@@ -2626,8 +3183,8 @@ class ChaoXing:
         # chapter_id 单刷点名做某章，直接进章节干活，不出章节进度
         overview = chapter_id is None
         if overview:
-            print('🚀 当前课程：%s' % user.course_name)
-            print('📚 课程章节列表（共%d章）:' % len(user.capter_list))
+            print("🚀 当前课程：%s" % user.course_name)
+            print("📚 课程章节列表（共%d章）:" % len(user.capter_list))
         for task_id, name in user.capter_list:
             if chapter_id is not None and str(task_id) != str(chapter_id):
                 continue
@@ -2641,28 +3198,34 @@ class ChaoXing:
             print(user.__progress_bar(user.pts_done, user.pts_all))
             user.__print_exam_list()
             if targets:
-                print('开始刷剩余%d章...' % len(targets))
+                print("开始刷剩余%d章..." % len(targets))
 
         for task_id, name in targets:
-            print('👤 当前用户：%s' % (user.realname or user.username))
-            print('🚀 进入章节 %s' % name)
+            print("👤 当前用户：%s" % (user.realname or user.username))
+            print("🚀 进入章节 %s" % name)
             try:
                 vids, docs, quizzes = user.__split_tasks(user.__get_marg(task_id))
                 if not vids and not docs and not quizzes:
-                    print('   ➖ 无任务')
+                    print("   ➖ 无任务")
                     continue
-                watch_pending = mode in ('all', 'watch', 'course') and any(not a.get('isPassed') for a in vids)
-                doc_pending = mode in ('all', 'watch', 'course') and any(a.get('job') is True for a in docs)
-                quiz_pending = mode in ('all', 'test', 'course') and any(a.get('job') is True for a in quizzes)
-                if mode != 'all':
+                watch_pending = mode in ("all", "watch", "course") and any(
+                    not a.get("isPassed") for a in vids
+                )
+                doc_pending = mode in ("all", "watch", "course") and any(
+                    a.get("job") is True for a in docs
+                )
+                quiz_pending = mode in ("all", "test", "course") and any(
+                    a.get("job") is True for a in quizzes
+                )
+                if mode != "all":
                     # 非 all 模式总进度只统计对应类型任务点，进章后把该章总数累计进基线
                     # （完成数由任务点完成时即时+1，这里不再累计）
                     _, n_all = user.__count_pts(vids, docs, quizzes, mode)
                     user.pts_all += n_all
                 if not watch_pending and not doc_pending and not quiz_pending:
-                    print('   （无待完成任务，跳过）')
+                    print("   （无待完成任务，跳过）")
                     continue
-                print('   📋 任务清单：')
+                print("   📋 任务清单：")
                 print(user.__task_list_line(vids, docs, quizzes, mode))
                 if watch_pending:
                     user.finish_video(task_id)
@@ -2673,13 +3236,16 @@ class ChaoXing:
             except Exception as e:
                 # 长挂机一章上百个请求，单章意外炸了只放弃本章（下次运行自动续），
                 # 剩余章节照常推进——以前这里一炸整个脚本就退出
-                print('   ❌ 章节任务异常中断（跳到下一章）: %s: %s' % (type(e).__name__, e))
+                print(
+                    "   ❌ 章节任务异常中断（跳到下一章）: %s: %s"
+                    % (type(e).__name__, e)
+                )
                 continue
             # 刷完重拉服务端最新状态校正实时计数：all 模式重拉章节树头部基线（权威值）；
             # 非 all 模式任务点完成时已即时+1，无需再拉
             pts_before = (user.pts_done, user.pts_all)
             try:
-                if mode == 'all':
+                if mode == "all":
                     time.sleep(1)  # 服务端落库延迟，立即重拉可能还是旧值
                     user.refresh_chapter_status()
                     if user.course_pts:
@@ -2688,18 +3254,18 @@ class ChaoXing:
                         # 不计完成，权威值会小于本地实时计数，直接采纳会让进度条倒退
                         user.pts_done = max(user.pts_done, srv_done)
             except Exception as e:
-                print('   ⚠️ 进度刷新失败: %s: %s' % (type(e).__name__, e))
+                print("   ⚠️ 进度刷新失败: %s: %s" % (type(e).__name__, e))
             if (user.pts_done, user.pts_all) != pts_before:
                 # 权威值与本地实时计数有偏差（如服务端异步补录）才补一条进度条，一致则不重复输出
                 print(user.__progress_bar(user.pts_done, user.pts_all))
 
         # 章节完处理考试（all 模式全流程；course/watch/test 只管章节；
         # 作业不进全刷，仅 mode='homework' 单独跑）
-        if mode == 'all':
+        if mode == "all":
             user.__run_pending_exams()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 用法1（刷课）: python chaoxing.py <用户名> <密码> <index>
     # 用法2（点名考试/作业）: 在 main 调用里传关键字 exam_id=<考试地址里 examId= 后那串数字>
     #   / homework_id=<作业地址里 workId= 后那串数字>（作业也可传作业名），点名即自动进入对应模式
@@ -2708,7 +3274,7 @@ if __name__ == '__main__':
     # 想看发给 LLM 的提示词加 show_prompt=True（测验/考试/作业都生效）
     # 考试题目存日志加 save_log=True（不满分才写入 考试答题日志/<exam_id>_<时间戳>.txt）
     # 只做题不交卷加 no_submit=True（考试答案保存在服务端、作业只暂存，可自行检查后手动交）
-    if len(sys.argv) == 4 and sys.argv[3] == 'ls':
+    if len(sys.argv) == 4 and sys.argv[3] == "ls":
         ChaoXing.courses(sys.argv[1], sys.argv[2])
     elif len(sys.argv) == 4:
         ChaoXing.main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
